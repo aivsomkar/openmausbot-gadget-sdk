@@ -101,6 +101,21 @@ const char *session_last_error(void);
 const char *session_host_in_use(void);          /* "addr:port", or NULL when unknown */
 bool session_is_setup(void);                    /* never paired (no host_id) */
 
+/* ---- interaction.c ------------------------------------------------------------ */
+void interaction_init(void);
+void interaction_deinit(void);
+void interaction_input(const gadget_input_t *in);
+void interaction_mic(const gadget_mic_frame_t *f);
+void interaction_tick(void);
+bool interaction_on_msg(const gp_msg_t *m);     /* heard, working, reply, done; false when not ours */
+void interaction_on_session_lost(void);
+/* `say`: start a typed turn; false when there is no session. */
+bool interaction_say(const char *text, char turn_out[GADGET_TURN_MAX + 1]);
+const char *interaction_turn(void);             /* the current turn id, "" when none */
+bool interaction_turn_in_flight(void);          /* sent and no done yet */
+/* Mean square of PCM16 samples (shared by the mic and speaker levels). */
+uint32_t core_mean_square(const int16_t *pcm, size_t n);
+
 /* ---- screens.c -------------------------------------------------------------- */
 void screens_update(void);
 

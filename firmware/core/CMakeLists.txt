@@ -12,6 +12,7 @@ set(GADGET_CORE_SRCS
   src/core.c
   src/session.c
   src/screens.c
+  src/interaction.c
 )
 
 if(ESP_PLATFORM)

@@ -214,6 +214,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
 
   publish_identity();
   session_init();
+  interaction_init();
   if (g_core.wifi_ssid[0] != '\0') hal_wifi_connect(g_core.wifi_ssid, g_core.wifi_pass);
 
   cJSON *boot = cJSON_CreateObject();
@@ -232,6 +233,12 @@ gadget_status_t core_init(const core_config_t *cfg) {
 void core_event(const gadget_event_t *ev) {
   if (!g_core.initialized || ev == NULL) return;
   switch (ev->type) {
+    case GADGET_EV_INPUT:
+      interaction_input(&ev->u.input);
+      break;
+    case GADGET_EV_MIC_FRAME:
+      interaction_mic(&ev->u.mic);
+      break;
     case GADGET_EV_WIFI_STATE:
     case GADGET_EV_WS_OPEN:
     case GADGET_EV_WS_TEXT:
@@ -254,6 +261,7 @@ void core_tick(uint64_t now_ms) {
   g_core.model.now_ms = now_ms;
   g_core.ticked = true;
   session_tick();
+  interaction_tick();
   screens_update();
   model_commit();
 }
@@ -261,7 +269,10 @@ void core_tick(uint64_t now_ms) {
 const ui_model_t *core_ui_model(void) { return &g_core.model; }
 
 void core_deinit(void) {
-  if (g_core.initialized) session_deinit();
+  if (g_core.initialized) {
+    interaction_deinit();
+    session_deinit();
+  }
   memset(&g_core, 0, sizeof g_core);
   memset(&s_shadow, 0, sizeof s_shadow);
 }
@@ -284,9 +295,13 @@ void core_tap(core_tap_dir_t dir, const char *op, const char *json, size_t len) 
 
 void core_on_ready(void) { hal_log(GADGET_LOG_INFO, CORE_TAG, "talking to %s", g_core.bot_name); }
 
-void core_on_session_lost(void) { hal_log(GADGET_LOG_INFO, CORE_TAG, "session lost"); }
+void core_on_session_lost(void) {
+  hal_log(GADGET_LOG_INFO, CORE_TAG, "session lost");
+  interaction_on_session_lost();
+}
 
 void core_on_msg(const gp_msg_t *m) {
+  if (interaction_on_msg(m)) return;
   switch (m->op) {
     default:
       hal_log(GADGET_LOG_DEBUG, CORE_TAG, "ignored %s", gp_op_name(m->op));
