@@ -14,3 +14,10 @@ endfunction()
 gadget_pure_test(util)
 gadget_pure_test(proto)
 gadget_pure_test(crypto)
+
+# protocol/vectors in C (label vectors).
+add_executable(test_vectors test_vectors.c)
+target_link_libraries(test_vectors PRIVATE gadget_core unity::framework)
+gadget_warnings(test_vectors)
+add_test(NAME vectors.c COMMAND test_vectors ${GADGET_VECTORS_DIR})
+set_tests_properties(vectors.c PROPERTIES LABELS vectors TIMEOUT 60)
