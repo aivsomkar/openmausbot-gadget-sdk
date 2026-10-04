@@ -14,6 +14,7 @@ endfunction()
 gadget_pure_test(util)
 gadget_pure_test(proto)
 gadget_pure_test(crypto)
+gadget_pure_test(layout)
 
 # protocol/vectors in C (label vectors).
 add_executable(test_vectors test_vectors.c)
