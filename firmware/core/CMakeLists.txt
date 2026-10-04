@@ -9,6 +9,7 @@ set(GADGET_CORE_SRCS
   src/boards.c
   src/ui_layout.c
   src/console.c
+  src/core.c
 )
 
 if(ESP_PLATFORM)
