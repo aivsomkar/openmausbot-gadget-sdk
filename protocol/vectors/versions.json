@@ -61,6 +61,30 @@
       "a": "1.1.0-rc.1",
       "b": "1.1.0-rc.1",
       "cmp": 0
+    },
+    {
+      "name": "leading-zero-core",
+      "a": "1.01.0",
+      "b": "1.1.0",
+      "cmp": 0
+    },
+    {
+      "name": "leading-zero-prerelease",
+      "a": "1.1.0-rc.01",
+      "b": "1.1.0-rc.1",
+      "cmp": 0
+    },
+    {
+      "name": "empty-ident-vs-numeric",
+      "a": "1.0.0-rc..1",
+      "b": "1.0.0-rc.1",
+      "cmp": 1
+    },
+    {
+      "name": "empty-ident-vs-alpha",
+      "a": "1.0.0-.",
+      "b": "1.0.0-a",
+      "cmp": -1
     }
   ],
   "custom": [
@@ -98,6 +122,16 @@
       "name": "empty",
       "fw": "",
       "custom": true
+    },
+    {
+      "name": "leading-zero",
+      "fw": "1.01.0",
+      "custom": false
+    },
+    {
+      "name": "empty-ident",
+      "fw": "1.0.0-.",
+      "custom": false
     }
   ]
 }

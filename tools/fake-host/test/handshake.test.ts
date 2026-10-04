@@ -21,6 +21,12 @@ async function host(t: TestContext, o: Partial<FakeHostOptions> = {}): Promise<{
   return { h, events };
 }
 
+/** A raw, otherwise valid upgrade request for /gadget, with extra header lines. */
+function rawUpgrade(extra = ""): string {
+  return "GET /gadget HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+    + "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: openmausbot-gadget.1\r\n" + extra + "\r\n";
+}
+
 test("upgrades: Origin 403, no subprotocol 400, other paths 404, bad version 426, no extensions", async (t) => {
   const { h } = await host(t);
   assert.equal(await tryUpgrade(h.port, { headers: { Origin: "http://example.test" } }), "status 403");
@@ -39,6 +45,40 @@ test("upgrades: Origin 403, no subprotocol 400, other paths 404, bad version 426
   });
   assert.match(raw, /^HTTP\/1\.1 426 /);
   assert.match(raw, /Sec-WebSocket-Version: 13/);
+});
+
+test("a refused upgrade whose client resets the connection does not crash the host", async (t) => {
+  const { h } = await host(t);
+  for (let i = 0; i < 20; i++) {
+    await new Promise<void>((resolve) => {
+      const s = net.connect(h.port, "127.0.0.1", () => {
+        s.write(rawUpgrade("Origin: http://example.test\r\n"));
+        s.resetAndDestroy();
+      });
+      s.on("error", () => {});
+      s.on("close", () => resolve());
+    });
+  }
+  assert.equal((await connectGadget({ port: h.port, enroll: "123456" })).result.op, "ready");
+});
+
+test("a refused upgrade whose client keeps its half open does not hold up close()", async () => {
+  // No t.after(close) here: on a host that hangs, that hook would hang the whole run.
+  const h = await startFakeHost({ port: 0, quiet: true, code: "123456" });
+  const s = net.connect({ port: h.port, host: "127.0.0.1", allowHalfOpen: true });
+  s.on("error", () => {});
+  s.resume();
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const ended = new Promise((resolve) => s.once("end", resolve));
+    s.write(rawUpgrade("Origin: http://example.test\r\n"));
+    await ended;
+    const hung = new Promise<string>((resolve) => (timer = setTimeout(() => resolve("hung"), 2000)));
+    assert.equal(await Promise.race([h.close().then(() => "closed"), hung]), "closed");
+  } finally {
+    clearTimeout(timer);
+    s.destroy();
+  }
 });
 
 test("the listening and code events come first", async (t) => {
@@ -85,6 +125,30 @@ test("refusals: enroll_required, bad_code (wrong / used up), proto_unsupported, 
   const g = await openSocket(h.port);
   g.send({ ...helloFor(g, { port: h.port }), id: "gad_0000000000000000" });
   assert.equal((await g.next("error")).code, "bad_sig");
+});
+
+test("after error the host ignores every frame the gadget still sends", async (t) => {
+  const { h, events } = await host(t);
+  const g = await openSocket(h.port);
+  g.send(helloFor(g, { port: h.port }));
+  const ch = await g.next("challenge");
+  const sig = b64Encode(signP256(g.key, proveText(g.id, ch.nonce, ch.host_id)));
+  // Same burst: the first prove is refused (no enroll), the second carries the right code.
+  g.send({ op: "prove", sig });
+  g.send({ op: "prove", sig, enroll: "123456" });
+  await g.closed;
+  assert.deepEqual(g.ops(), ["challenge", "error"]);
+  assert.ok(!events.some((e) => e.event === "enrolled" || e.event === "ready"), JSON.stringify(events.map((e) => e.event)));
+  assert.equal(h.state.gadgets.has(g.id), false);
+  assert.equal(h.state.window!.used, false);
+  const from = events.length;
+  const p = await openSocket(h.port);
+  p.send(helloFor(p, { port: h.port, proto: 2 }));
+  p.send(helloFor(p, { port: h.port }));
+  await p.closed;
+  assert.deepEqual(p.ops(), ["error"]);
+  const sent = events.slice(from).filter((e) => e.event === "tx").map((e) => JSON.parse(String(e.msg)).op);
+  assert.deepEqual(sent, ["error"], "no challenge is even attempted after the refusal");
 });
 
 test("a device cap of 0 answers device_limit and keeps the window open", async (t) => {
@@ -145,6 +209,13 @@ test("commands: unknown names, a missing gadget and bad codes are refused with a
   assert.deepEqual(await h.command({ cmd: "nope" }), { event: "ack", cmd: "nope", ok: false, error: "unknown command nope" });
   assert.equal((await h.command({ cmd: "drop" })).error, "no gadget has connected yet");
   assert.equal((await h.command({ cmd: "code", code: "12" })).error, "code must be six digits");
+});
+
+test("commands: names inherited from Object.prototype are unknown commands", async (t) => {
+  const { h } = await host(t);
+  for (const name of ["toString", "constructor", "__proto__", "valueOf", "hasOwnProperty"]) {
+    assert.deepEqual(await h.command({ cmd: name }), { event: "ack", cmd: name, ok: false, error: `unknown command ${name}` });
+  }
 });
 
 test("ops before ready, unknown ops and invalid JSON are ignored", async (t) => {

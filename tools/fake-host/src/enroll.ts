@@ -82,7 +82,8 @@ export type ProveDecision =
   | { ok: true; record: GadgetRecord; enrolled: boolean; sendName: boolean }
   | { ok: false; code: GadgetErrorCode; message: string };
 
-/** Rules 1 (signature) to 4 on `prove`. Mutates state only on success. */
+/** Rules 1 (signature) to 4 on `prove`. Mutates state on success, and a wrong pairing code uses
+ *  one of the window's attempts. */
 export function decideProve(input: {
   hello: NormalizedHello;
   challenge: ChallengeMsg;

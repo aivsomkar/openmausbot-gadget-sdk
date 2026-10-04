@@ -31,7 +31,12 @@ export interface StartOptions {
   listener?: (event: HostEvent) => void;
 }
 
+/** Answers a refused upgrade and destroys the socket once the answer is written. Node's HTTP
+ *  server removes its own socket error listener before 'upgrade', so without ours a client that
+ *  resets crashes the host (EPIPE), and one that keeps its half open would hold up close(). */
 function refuseUpgrade(socket: Duplex, status: number, text: string, extra = ""): void {
+  socket.on("error", () => socket.destroy());
+  socket.once("finish", () => socket.destroy());
   socket.end(`HTTP/1.1 ${status} ${text}\r\n${extra}Connection: close\r\nContent-Length: 0\r\n\r\n`);
 }
 
@@ -169,7 +174,10 @@ export async function startFakeHost(partial: Partial<FakeHostOptions> = {}, star
     let ack: Ack;
     try {
       if (name === null) throw new Error("missing cmd");
-      const handler = builtins[name] ?? features.find((f) => name in f.commands)?.commands[name];
+      // Own properties only: "toString", "constructor" or "__proto__" are unknown commands.
+      const handler = Object.hasOwn(builtins, name)
+        ? builtins[name]
+        : features.find((f) => Object.hasOwn(f.commands, name))?.commands[name];
       if (!handler) throw new Error(`unknown command ${name}`);
       const result = await handler(call);
       ack = { event: "ack", cmd: name, ok: true, ...(result ?? {}) };

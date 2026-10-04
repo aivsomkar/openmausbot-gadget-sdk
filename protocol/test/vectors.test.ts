@@ -166,6 +166,10 @@ test("firmware.json: the gadget's verdict uses its own board id", () => {
 });
 
 test("base64.json: only canonical RFC 4648 §4 text decodes", () => {
+  assert.deepEqual(cases("base64.json").map((c) => c.name), [
+    "empty", "one-byte", "two-bytes", "three-bytes", "pinned-nonce", "rfc-pubkey", "no-padding", "short-padding", "pad-bits",
+    "missing-padding-3", "trailing-newline", "leading-space", "url-alphabet", "concatenated",
+  ]);
   for (const c of cases("base64.json")) {
     const bytes = b64DecodeCanonical(c.input);
     assert.equal(bytes !== null, c.canonical, c.name);
@@ -174,6 +178,9 @@ test("base64.json: only canonical RFC 4648 §4 text decodes", () => {
 });
 
 test("frames.json: binary frames decode and re-encode byte for byte", () => {
+  assert.deepEqual(cases("frames.json").map((c) => c.name), [
+    "mic-20ms", "speaker-40ms-16k", "image-rows", "fw-chunk", "fw-chunk-last", "too-short", "stream-zero", "unknown-kind", "fw-no-offset",
+  ]);
   for (const c of cases("frames.json")) {
     const frame = hexDecode(c.frame_hex);
     const d = decodeBinary(frame);
@@ -192,6 +199,19 @@ test("frames.json: binary frames decode and re-encode byte for byte", () => {
 
 test("versions.json: SemVer precedence and the custom-build rule", () => {
   const v = load("versions.json");
+  assert.deepEqual(v.compare.map((c: Case) => c.name), [
+    "patch-vs-minor", "numeric-minor", "release-vs-rc", "rc2-vs-rc1", "rc10-vs-rc9", "beta-vs-rc", "shorter-prerelease",
+    "numeric-vs-alpha", "equal-release", "equal-rc",
+    // Accepted by the pattern although SemVer 2.0.0 forbids them (PROTOCOL.md §4.1): C and TS must agree.
+    "leading-zero-core", "leading-zero-prerelease", "empty-ident-vs-numeric", "empty-ident-vs-alpha",
+  ]);
+  assert.deepEqual(v.compare.slice(10).map((c: Case) => [c.a, c.b, c.cmp]), [
+    ["1.01.0", "1.1.0", 0], ["1.1.0-rc.01", "1.1.0-rc.1", 0], ["1.0.0-rc..1", "1.0.0-rc.1", 1], ["1.0.0-.", "1.0.0-a", -1],
+  ]);
+  assert.deepEqual(v.custom.map((c: Case) => c.name), [
+    "dev-zero", "dev-tagged", "release", "prerelease", "leading-v", "two-parts", "empty", "leading-zero", "empty-ident",
+  ]);
+  assert.deepEqual(v.custom.slice(7).map((c: Case) => [c.fw, c.custom]), [["1.01.0", false], ["1.0.0-.", false]]);
   for (const c of v.compare) {
     assert.equal(compareVersions(c.a, c.b), c.cmp, c.name);
     assert.equal(compareVersions(c.b, c.a), -c.cmp || 0, c.name);

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Firmware versions (PROTOCOL.md §4.1; spec §8): the tag without "v"; SemVer 2.0.0 precedence.
+// The spec's pattern also accepts leading zeros and empty pre-release identifiers, which SemVer
+// forbids: numeric identifiers compare by value, and an empty identifier is alphanumeric
+// (versions.json pins both).
+import { RELEASE_VERSION_RE } from "./types.ts";
 
-export const RELEASE_VERSION_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/;
+export { RELEASE_VERSION_RE };
 
 function parse(v: string): { core: number[]; pre: string[] } {
   if (!RELEASE_VERSION_RE.test(v)) throw new Error(`not a release version: ${JSON.stringify(v)}`);

@@ -43,6 +43,9 @@ export class GadgetSession {
   private readonly ws: WsLike;
   private readonly hooks: SessionHooks;
   private challenge: ChallengeMsg | null = null;
+  /** Set once the host starts closing (error, close, terminate). `ws` still emits 'message'
+   *  while CLOSING, and PROTOCOL.md §4.3 says nothing after `error` is processed. */
+  private closing = false;
   private readonly ops = new Map<string, Set<OpListener>>();
   private readonly binaries = new Set<BinaryListener>();
   private readonly closers = new Set<(code: number) => void>();
@@ -68,6 +71,7 @@ export class GadgetSession {
     }, o.handshakeMs);
     ws.on("message", (data: Buffer, isBinary: boolean) => {
       this.idleTimer.refresh();
+      if (this.closing) return;
       if (isBinary) this.onBinaryFrame(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
       else this.onText(data.toString("utf8"));
     });
@@ -89,7 +93,7 @@ export class GadgetSession {
 
   /** Sends one text frame. Strings for the screen must already be folded. */
   send(msg: HostToGadget): boolean {
-    if (this.phase === "closed") return false;
+    if (this.phase === "closed" || this.closing) return false;
     const text = JSON.stringify(msg);
     if (Buffer.byteLength(text, "utf8") > TEXT_FRAME_MAX) {
       this.host.log(`${this.label()}: refusing to send a ${msg.op} frame over 16 KiB`);
@@ -102,7 +106,7 @@ export class GadgetSession {
 
   /** Sends one binary frame and resolves once it is written to the socket (false if closed). */
   sendBinary(kind: Kind, stream: number, payload: Uint8Array): Promise<boolean> {
-    if (this.phase === "closed") return Promise.resolve(false);
+    if (this.phase === "closed" || this.closing) return Promise.resolve(false);
     if (this.ws.bufferedAmount > SEND_BUFFER_MAX) {
       this.close(1008, "send buffer full");
       return Promise.resolve(false);
@@ -144,15 +148,18 @@ export class GadgetSession {
 
   /** Sends `error {code, message}` and closes with 1000 (PROTOCOL.md §4.3). */
   fail(code: GadgetErrorCode, message: string): void {
-    if (this.phase === "closed") return;
+    if (this.phase === "closed" || this.closing) return;
     this.ws.send(JSON.stringify({ op: "error", code, message }));
     this.host.emit({ event: "tx", gadget: this.gadgetId, msg: JSON.stringify({ op: "error", code, message }) });
     this.close(1000, code);
   }
   close(code = 1000, reason = ""): void {
-    if (this.phase !== "closed") this.ws.close(code, reason);
+    if (this.phase === "closed" || this.closing) return;
+    this.closing = true;
+    this.ws.close(code, reason);
   }
   terminate(): void {
+    this.closing = true;
     this.ws.terminate();
   }
 

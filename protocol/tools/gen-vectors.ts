@@ -265,10 +265,15 @@ function versions(): Json {
     ["rc2-vs-rc1", "1.1.0-rc.2", "1.1.0-rc.1", 1], ["rc10-vs-rc9", "1.1.0-rc.10", "1.1.0-rc.9", 1], ["beta-vs-rc", "1.1.0-beta", "1.1.0-rc", -1],
     ["shorter-prerelease", "1.1.0-rc", "1.1.0-rc.1", -1], ["numeric-vs-alpha", "1.1.0-1", "1.1.0-a", -1],
     ["equal-release", "1.1.0", "1.1.0", 0], ["equal-rc", "1.1.0-rc.1", "1.1.0-rc.1", 0],
+    // The pattern accepts these although SemVer 2.0.0 forbids them (PROTOCOL.md §4.1): numeric
+    // identifiers compare by value, and an empty pre-release identifier is alphanumeric.
+    ["leading-zero-core", "1.01.0", "1.1.0", 0], ["leading-zero-prerelease", "1.1.0-rc.01", "1.1.0-rc.1", 0],
+    ["empty-ident-vs-numeric", "1.0.0-rc..1", "1.0.0-rc.1", 1], ["empty-ident-vs-alpha", "1.0.0-.", "1.0.0-a", -1],
   ].map(([name, a, b, cmp]) => ({ name, a, b, cmp }));
   const custom = [
     ["dev-zero", "0.0.0-dev", true], ["dev-tagged", "1.2.0-dev", true], ["release", "1.2.0", false], ["prerelease", "1.2.0-rc.1", false],
     ["leading-v", "v1.2.0", true], ["two-parts", "1.2", true], ["empty", "", true],
+    ["leading-zero", "1.01.0", false], ["empty-ident", "1.0.0-.", false],
   ].map(([name, fw, isCustom]) => ({ name, fw, custom: isCustom }));
   for (const c of compare) check(compareVersions(c.a as string, c.b as string) === c.cmp, `compare ${c.name}`);
   for (const c of custom) check(isCustomBuild(c.fw as string) === c.custom, `custom ${c.name}`);
