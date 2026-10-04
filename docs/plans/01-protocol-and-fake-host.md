@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give the gadget SDK its normative protocol document, byte-stable test vectors that the firmware and MausBot both run, and a Node fake host that speaks the host side of `openmausbot-gadget/1`, on branch `p1-protocol`.
+**Goal:** Give the gadget SDK its normative protocol document, byte-stable test vectors that the firmware and MausBot both run, and a Node fake host that speaks the host side of `openmausbot-gadget/1`, on branch `main` (run note).
 
 **Architecture:** `protocol/PROTOCOL.md` restates spec §4 as the normative reference, with every encoding and wire detail the contract pins. A small TypeScript library (`protocol/lib/`, Node built-ins only) implements those encodings; `protocol/tools/gen-vectors.ts` produces the vectors with `@noble/curves` (deterministic, high-S kept), and `protocol/test/` checks every vector independently with `node:crypto`. `tools/fake-host/` builds on the same library and the `ws` package: an HTTP server whose only WebSocket path is `/gadget`, one `GadgetSession` per connection for the handshake, and three features (voice, display, OTA) driven by a JSON-lines control interface on stdin and stdout.
 
@@ -12,8 +12,9 @@
 
 ## Global Constraints
 
-- **Repository and branch:** work in `/Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk` on branch `p1-protocol`, created from `main` (contract §1.3). No plan commits to `main`.
-- **Publishing belongs to Omkar:** never push, open a PR or create a release. Prepare the branch, run the tests and stop.
+- **Repository and branch:** work in `/Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk` on branch `main` (run note). Contract §1.3 lists P1 as `main` (landed, pushed).
+- **Run note:** P1 landed directly on `main`, and each of its commits was pushed to `origin/main`. The build's run instructions replaced the `p1-protocol` branch that contract §1.3 first planned. P1's commits sit on top of the spec v1.1 (`140e9f4`), the contract (`6020090`) and this plan (`45e8118`). The first is `c952322` (Task 1). The last code commit is `3da4585` (`fix(P1): CLI tests reap their fake host when they fail`) or a later `fix(P1)` commit. Commits that touch only `docs/` are plan edits, not P1 code. Later plans start from `main`: P2a creates `p2a-core` from it, and P3a vendors `protocol/vectors/` from it (contract §3.19). The dispatcher starts P2a only when `git status --porcelain -- . ':!docs/plans'` prints nothing, so an uncommitted P1 fix-up holds P2a back until it is committed and Task 13 has been rerun.
+- **Publishing belongs to Omkar:** never push, open a PR or create a release. Prepare the commits, run the tests and stop. Under the run note, the build's own run instructions pushed P1's commits to `origin/main`. No step of this plan pushes, and pushing a later `fix(P1)` commit is Omkar's call.
 - **OpenMausBot is read-only:** the checkout at `/Users/omkar/Desktop/openmaus/OpenGrokBot` belongs to another session. Never checkout, stash, reset, edit or fetch there. P1 only reads one file from it with `git -C /Users/omkar/Desktop/openmaus/OpenGrokBot show origin/main:LICENSE`. P1 changes nothing in OpenMausBot.
 - **Original-work rule (spec §11):** everything here is written for this project. Never open, fetch, quote or cite third-party gadget SDKs or voice-assistant firmware projects. Vendor and primary sources only (RFCs, Node and npm docs, Apache).
 - **Node:** the SDK's tools need Node ≥ 22.18, which runs `.ts` files directly; CI uses Node 24 (spec §5.1). This Mac's default `node` is 22.22.3 (npm 10.9.8); Node 24.14.1 is at `~/.nvm/versions/node/v24.14.1/bin` for the second run in Task 13.
@@ -150,27 +151,26 @@ tools/fake-host/
 
 ---
 
-### Task 1: Bootstrap the branch and the repository files
+### Task 1: Bootstrap the repository files on `main`
 
 **Files:**
-- Commit: `docs/specs/2026-10-04-openmausbot-gadget-design.md`, `docs/plans/*` (already on disk)
+- Commit: nothing under `docs/` (run note: the spec v1.1, the contract and this plan are already committed on `main`)
 - Create: `LICENSE`, `.gitignore`, `.gitattributes`, `README.md`, `package.json`, `package-lock.json` (generated)
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: branch `p1-protocol`; npm scripts `vectors`, `vectors:check`, `test:protocol`, `fake-host`, `test:fake-host`, `test` (contract §1.4, exact); devDependencies `@noble/curves` 2.4.0 and `ws` 8.22.0; `.gitattributes` rules `protocol/vectors/** -text`, `keys/** -text`, `*.png binary`.
+- Produces: P1's first commit on `main` (run note); npm scripts `vectors`, `vectors:check`, `test:protocol`, `fake-host`, `test:fake-host`, `test` (contract §1.4, exact); devDependencies `@noble/curves` 2.4.0 and `ws` 8.22.0; `.gitattributes` rules `protocol/vectors/** -text`, `keys/** -text`, `*.png binary`.
 
-- [ ] **Step 1: Create the branch and commit the docs**
+- [ ] **Step 1: Start on `main` with the docs already committed (run note)**
 
 ```bash
 cd /Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk
-git status --short
-git switch -c p1-protocol
-git add docs/specs/*.md docs/plans/*.md
-git commit -m "docs: spec v1.1 and implementation plans" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git switch main
+git merge-base --is-ancestor 45e8118 HEAD && echo "docs committed"
+git status --short -- . ':!docs/plans'
 ```
 
-Expected: `git status --short` lists `?? docs/plans/` (and possibly a modified spec); the commit records the Markdown files only (`.gitignore` does not exist yet, so a Finder `.DS_Store` must not be swept in). If `git commit` says "nothing to commit", the docs are already committed: continue. Other plan sessions may still be writing into `docs/plans/` in this working tree; whatever they write later is theirs to commit, not P1's.
+Expected: `docs committed`, then no output from `git status`. The spec v1.1 (`140e9f4`), the contract (`6020090`) and this plan (`45e8118`) were committed on `main` before Task 1. P1 therefore makes no docs commit and creates no `p1-protocol` branch, and Task 1's own commit (Step 9) is `c952322`. Other plan sessions may still be writing into `docs/plans/` in this working tree. Whatever they write is theirs to commit, never P1's, so no P1 step runs `git add docs`.
 
 - [ ] **Step 2: Add the Apache-2.0 license text**
 
@@ -5650,16 +5650,16 @@ There is no build step (Node runs the `.ts` files), no TypeScript compiler and n
 
 **Files:** none (fix-ups only if a check fails, each in the task that owns the file, then rerun this task).
 
-**Run note:** P1 landed directly on `main` (the build's run instructions replaced contract §1.3's `p1-protocol` branch and pushed each commit to `origin/main`). The commands below therefore use `main`, with `45e8118` (this plan's commit, the last one before Task 1) as the base.
+**Run note:** P1 landed directly on `main`, and each of its commits was pushed to `origin/main` (Global Constraints). The build's run instructions replaced the `p1-protocol` branch that contract §1.3 first planned, and §1.3 now lists P1 as `main` (landed, pushed). The commands below therefore use `main`, with `45e8118` (this plan's commit, the last one before Task 1) as the base. When this plan was last revised (2026-10-05), P1's last code commit was `3da4585`. The tree also held one uncommitted P1 edit, in `tools/fake-host/test/display.test.ts`. There, "post speech starts only after the reply's speech has played out" takes its `speak.begin` times from the host's own `tx` events instead of the gadget's arrival times, as item 7 did for the pacing test. Step 1 fails until that edit is committed as a `fix(P1)` commit, with its own entry under "Deviations recorded during the build", and this task has been rerun on the new tip. Until then the dispatcher does not start P2a.
 
 - [ ] **Step 1: Clean tree and commit list**
 
 ```bash
-git status --short -- . ':(exclude)docs'
+git status --porcelain -- . ':!docs/plans'
 git log --oneline 45e8118..main -- . ':(exclude)docs'
 ```
 
-Expected: no output from `git status`; the log shows the commits of Tasks 1–12 and the four fix commits (`fix(P1): address review of tasks 5-8`, two `fix(P1): address final review` and `fix(P1): CLI tests reap their fake host when they fail`, deviation 17), 16 in all. Plan commits from other sessions touch only `docs/` and are not listed. Changes under `docs/` written by other plan sessions are expected; P1 does not commit them.
+Expected: no output from `git status`. This is the same check the dispatcher makes before it starts P2a: anything uncommitted outside `docs/plans/`, a P1 fix-up included, holds P2a back. The log shows the commits of Tasks 1–12 and the four fix commits (`fix(P1): address review of tasks 5-8`, two `fix(P1): address final review` and `fix(P1): CLI tests reap their fake host when they fail`, deviation 17), 16 in all, ending at `3da4585`. Each later `fix(P1)` commit adds one line at the top and has its own entry under "Deviations recorded during the build". Plan commits touch only `docs/` and are not listed. Changes under `docs/plans/` written by other plan sessions are expected; P1 does not commit them.
 
 - [ ] **Step 2: Everything on Node 22**
 
@@ -5716,7 +5716,9 @@ Expected: `1`.
 Do not push (under the run note, P1's commits are already on `origin/main`). Report to Omkar:
 
 - P1's commits on `main` (Step 1's list), ready for review;
-- that P2a can branch `p2a-core` from it, and that P3a can vendor `protocol/vectors/` (every `*.json` plus `SHA256SUMS`) with the SDK commit in its `SOURCE` file;
+- that P2a creates `p2a-core` from `main` (contract §1.3), and the dispatcher starts it only once `git status --porcelain -- . ':!docs/plans'` prints nothing. P2a's Task 1 Step 1 expects BASE `main`, with P1's last code commit `3da4585` or a later `fix(P1)` commit;
+- that P2a reruns its Tasks 16 (simulator ↔ fake-host scenarios) and 18 (branch-level verification) against that tip. Its expected text was first replayed against `80dff83`, and `d153d20` then changed what the fake host does. Reply speech now goes ahead of post speech that is queued but not yet playing, and a turn's `done` now comes before a queued post's `speak.begin` (item 14). The `close` command now accepts 1000–1003, 1007–1014 and 3000–4999 (item 15);
+- that P3a vendors `protocol/vectors/` (every `*.json` plus `SHA256SUMS`) from `main` and records that SDK commit in its `SOURCE` file (contract §3.19);
 - for P3a's vendored `frames.json` test: `valid` covers both layers (PROTOCOL.md §4.9), the 2-byte header and, for kind `0x04`, the firmware payload. `fw-no-offset` (`0401aabbcc`) has a valid header, so the header-only `decodeBinary` of contract §3.2 returns a frame for it; the test must also run the kind-4 payload check (a u32 little-endian offset and 1–4096 bytes) before it expects `valid: false`, as `protocol/test/vectors.test.ts` does;
 - for P4b's comparator: `versions.json` now pins numeric identifiers past 2^53 (`big-numeric-prerelease`, `big-numeric-core`), which compare by exact integer value, so compare digit strings (leading zeros dropped, then length, then digits), not JavaScript numbers. `09-ota-delivery.md` was patched to do so in both of its comparators, Task 3's `compareVersions` and Task 10's `compareFirmwareVersions` (deviation 16);
 - that P2d's `THIRD_PARTY.md` must list `@noble/curves` 2.4.0 (MIT, vector generator only) and `ws` 8.22.0 (MIT, fake host only);
@@ -5768,6 +5770,10 @@ Second final review (a second commit named `fix(P1): address final review`). Whe
 Branch verification (Task 13, commit `fix(P1): CLI tests reap their fake host when they fail`). Where this differs from the code block in Task 12, the repository file is authoritative. Test counts are unchanged.
 
 17. **CLI tests clean up their child (Task 12, `cli.test.ts`)**. Task 13 was run on this Mac while other sessions held the load average above 400, and "with no stdin pipe… keeps serving until SIGTERM" timed out waiting for `listening` (spawning Node took several seconds). The failure itself is the load, but `node --test` then never exited: the test had spawned a fake host that kept serving, and a live child keeps the test file's process open, so a failing CLI test would hang a CI job until its timeout instead of failing it. A `reap(t, child)` helper now kills each spawned child in `t.after` if it is still running (`spawnHost` takes `t` and calls it; the bad-options child and the no-stdin child call it directly). No assertion or timeout changed. Checked by mutation in a scratch clone: with the `listening` wait cut to 1 ms the old file failed test 4 and was still running after 65 s; the new file fails it and exits 1 in 3 s with no process left, and the same holds with `spawnHost`'s event wait cut to 1 ms (tests 2 and 3 fail, exit 1). The real suite then passed on Node 22 and 24 at a load average near 570.
+
+Second branch verification (Task 13, commit `fix(P1): post-speech ordering test times the host's own sends`, `3a42101`). Where this differs from the code block in Task 10, the repository file is authoritative. Test counts are unchanged.
+
+18. **Post-speech gap from the host's sends (Task 10, `display.test.ts`)**. "post speech starts only after the reply's speech has played out" stamped the two `speak.begin` frames when they arrived at the test gadget, which shares the host's process. A stall right after the host sent the reply's `speak.begin` delays that arrival stamp but not the post's playout wait, which runs on the wall clock from the send, so under load the measured gap shrank and the test failed although the host had waited the full 300 ms. Rerunning Task 13 on a fresh clone at a load average near 500 failed it once; with 16 suites run at once, the old test failed 5 of 32 runs (gaps of 1, 39, 47, 70 and 188 ms). The test now stamps the host's own `tx` events, as item 7 does for the pacing test: `tx` is emitted synchronously inside `session.send()`, before `speech.ts` starts its playout clock, so the gap it measures is the host's real one. The threshold (at least 240 ms for 300 ms of audio) and every ordering assertion are unchanged, and the new test passed all 32 runs of the same load. A `speech.ts` without its playout wait still fails it (`came 3 ms after the reply's`). Under that 16-suite load the CLI tests' 5 s waits and the handshake timing test still fail on some runs, because their real-time deadlines are what they test; every run finished (item 17) instead of hanging.
 
 ## Self-review
 
