@@ -48,7 +48,7 @@ Commands go to stdin, one JSON object per line, when stdin is a pipe or file; fr
 | `code` | `code?` | open a new pairing window; emits `code` |
 | `ask` | `id?`, `kind`, `title`, `body?`, `options?` (permission: omitted or exactly Allow/Deny; question: at most 4), `expires_s?` | queue an ask; a permission ask always carries Allow and Deny. The ack has `id` and `queued` |
 | `ask.close` | `id`, `reason?` (default `withdrawn`) | close the open ask, or drop a queued one |
-| `post` | `kind` (`routine` or `message`), `text`, `speak?` (default: the gadget's setting) | send `post`; speech follows when `speak` and a speaker exist, once any earlier speech has played out |
+| `post` | `kind` (`routine` or `message`), `text`, `speak?` (default: the gadget's setting) | send `post`; speech follows when `speak` and a speaker exist, once any earlier speech has played out and its turn's `done` has been sent; a reply's speech goes ahead of post speech that has not begun |
 | `card` / `card.close` | `id?`, `title`, `body?`, `ttl_s?` (default 30) / `id` | |
 | `image` | `id?`, `w`, `h`, `ttl_s?`, `pattern?` (`bars` or `#rrggbb`) | `image.begin`, RGB565 rows, `image.end` |
 | `act` | `id?`, `name`, `args?` | send `act`; emits `act.result` when it arrives, or `{"timeout": true}` after 15 s |
@@ -58,7 +58,7 @@ Commands go to stdin, one JSON object per line, when stdin is a pipe or file; fr
 | `revoke` | | forget the gadget and send `error revoked` if it is connected |
 | `replace` | | send `error replaced` and close |
 | `drop` | | destroy the socket without a close frame |
-| `close` | `code?` | close frame: 1000 (the default) or 3000–4999 |
+| `close` | `code?` | close frame with `code`: 1000 (the default), 1001–1003, 1007–1014 or 3000–4999 (what `ws` sends; 1004, 1005 and 1006 are refused) |
 | `quit` | | close every gadget (1001) and exit 0 |
 
 | Event | Fields |

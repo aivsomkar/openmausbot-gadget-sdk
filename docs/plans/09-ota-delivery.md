@@ -59,6 +59,7 @@ All of this ran on this Mac under `/private/tmp`, with Node 24.14.1 (and 22.22.3
 - **`en.json`** round-trips exactly through `JSON.stringify(value, null, 2) + "\n"`. So Task 11's insertion script yields a diff of exactly the seven added lines, and it refuses to run without P3a's anchor key.
 - **SDK `dev-release.ts`** ran against P1's `protocol/lib/{encoding,identity,verify,version}.ts`, copied verbatim from `01-protocol-and-fake-host.md`. Its 4 tests passed on Node 22.22.3 and 24.14.1, also when run from a scratch mirror of `protocol/lib`, `keys/test-t1.*` and `tools/release` under `/private/tmp` (Task 12's place for the test until Contract deviation 2 is approved).
 - **Across the two repos**, a live `dev-release` server was fed to the companion's real `createReleaseChecker`. It refuses the t1-signed manifest without `OMB_GADGET_TRUST_TEST_KEY=1`. With the variable set, it offers 1.0.1 to a gadget on 1.0.0, offers nothing to `0.0.0-dev`, and downloads the image byte for byte.
+- **Numeric identifiers past 2^53** (patched 2026-10-05, after this plan was written). P1's final review added two `versions.json` cases, `big-numeric-prerelease` (`1.0.0-rc.9007199254740993` > `1.0.0-rc.9007199254740992`) and `big-numeric-core` (`9007199254740993.0.0` > `9007199254740992.0.0`). The comparators as first written here (`.split(".").map(Number)` and `Number(a) - Number(b)`) turn each pair into the same double and return 0, so both vendored-vector tests (Task 3's `releases.test.ts`, Task 10's `gadgets.update.test.ts`) would fail. Task 3's `compareVersions` and Task 10's `compareFirmwareVersions` now keep the core as digit strings and compare every numeric identifier with `compareNumeric`, which works like `protocol/lib/version.ts`'s `cmpNumeric`: leading zeros dropped, then the longer string is larger, then code-unit order. Both code blocks, taken from this file, were run against the SDK's real `protocol/vectors/versions.json` (16 `compare` cases, both ways round) on Node 22.22.3 and all passed. The code as first written failed exactly the four big-numeric checks.
 - **Node's built-in WebSocket client** may send only close code 1000 or 3000–4999 (`close(1001)` throws `InvalidAccessError`), so the hub test closes with the default.
 
 Not verified here, because each needs P3a's code, P2a's simulator or hardware: `ota.hub.test.ts` and `firmware-wiring.test.ts` (Task 8), `CompanionSection.firmware.test.ts` and the `CompanionSection.tsx`/`PhoneSetupFlow.tsx` edits in place (Tasks 10–11), the simulator end to end (Task 13) and every hardware check (Task 14). Task 14 runs all of the code checks.
@@ -679,19 +680,29 @@ export function parseManifest(json: unknown, options: { base?: string; allowTest
   return { version, boards: out };
 }
 
-function semver(version: string): { core: number[]; pre: string[] } {
+function semver(version: string): { core: string[]; pre: string[] } {
   if (!RELEASE_VERSION_RE.test(version)) throw new Error(`not a release version: ${JSON.stringify(version)}`);
   const dash = version.indexOf("-");
   return {
-    core: (dash < 0 ? version : version.slice(0, dash)).split(".").map(Number),
+    core: (dash < 0 ? version : version.slice(0, dash)).split("."),
     pre: dash < 0 ? [] : version.slice(dash + 1).split("."),
   };
+}
+
+/** Two digit strings by exact integer value, as the SDK's protocol/lib/version.ts compares them:
+ *  leading zeros dropped, then the longer is larger, then digit by digit. Never Number(): the
+ *  pattern allows any number of digits, and versions.json pins values past 2^53. */
+function compareNumeric(a: string, b: string): number {
+  const x = a.replace(/^0+(?=\d)/, "");
+  const y = b.replace(/^0+(?=\d)/, "");
+  if (x.length !== y.length) return x.length < y.length ? -1 : 1;
+  return x < y ? -1 : x > y ? 1 : 0;
 }
 
 function compareIdentifiers(a: string, b: string): number {
   const an = /^\d+$/.test(a);
   const bn = /^\d+$/.test(b);
-  if (an && bn) return Math.sign(Number(a) - Number(b));
+  if (an && bn) return compareNumeric(a, b);
   if (an !== bn) return an ? -1 : 1;
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -701,7 +712,10 @@ function compareIdentifiers(a: string, b: string): number {
 export function compareVersions(a: string, b: string): number {
   const x = semver(a);
   const y = semver(b);
-  for (let i = 0; i < 3; i += 1) if (x.core[i] !== y.core[i]) return x.core[i]! < y.core[i]! ? -1 : 1;
+  for (let i = 0; i < 3; i += 1) {
+    const c = compareNumeric(x.core[i]!, y.core[i]!);
+    if (c !== 0) return c;
+  }
   if (x.pre.length === 0 || y.pre.length === 0) {
     return x.pre.length === y.pre.length ? 0 : x.pre.length === 0 ? 1 : -1;
   }
@@ -3420,10 +3434,19 @@ export function isCustomBuild(fw: string): boolean {
   return fw.endsWith("-dev") || !RELEASE_VERSION_RE.test(fw);
 }
 
+/** Two digit strings by exact integer value (leading zeros dropped, then length, then digits),
+ *  never as numbers: versions.json pins identifiers past 2^53. */
+function compareNumeric(a: string, b: string): number {
+  const x = a.replace(/^0+(?=\d)/, "");
+  const y = b.replace(/^0+(?=\d)/, "");
+  if (x.length !== y.length) return x.length < y.length ? -1 : 1;
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
 function compareIdentifiers(a: string, b: string): number {
   const an = /^\d+$/.test(a);
   const bn = /^\d+$/.test(b);
-  if (an && bn) return Math.sign(Number(a) - Number(b));
+  if (an && bn) return compareNumeric(a, b);
   if (an !== bn) return an ? -1 : 1;
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -3434,11 +3457,14 @@ export function compareFirmwareVersions(a: string, b: string): number {
   if (!RELEASE_VERSION_RE.test(a) || !RELEASE_VERSION_RE.test(b)) return 0;
   const split = (v: string) => {
     const dash = v.indexOf("-");
-    return { core: (dash < 0 ? v : v.slice(0, dash)).split(".").map(Number), pre: dash < 0 ? [] : v.slice(dash + 1).split(".") };
+    return { core: (dash < 0 ? v : v.slice(0, dash)).split("."), pre: dash < 0 ? [] : v.slice(dash + 1).split(".") };
   };
   const x = split(a);
   const y = split(b);
-  for (let i = 0; i < 3; i += 1) if (x.core[i] !== y.core[i]) return x.core[i]! < y.core[i]! ? -1 : 1;
+  for (let i = 0; i < 3; i += 1) {
+    const c = compareNumeric(x.core[i]!, y.core[i]!);
+    if (c !== 0) return c;
+  }
   if (x.pre.length === 0 || y.pre.length === 0) return x.pre.length === y.pre.length ? 0 : x.pre.length === 0 ? 1 : -1;
   for (let i = 0; i < Math.min(x.pre.length, y.pre.length); i += 1) {
     const c = compareIdentifiers(x.pre[i]!, y.pre[i]!);

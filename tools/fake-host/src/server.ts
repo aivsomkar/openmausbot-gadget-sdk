@@ -147,8 +147,12 @@ export async function startFakeHost(partial: Partial<FakeHostOptions> = {}, star
     close(call) {
       const code = call.cmd.code ?? 1000;
       if (typeof code !== "number" || !Number.isInteger(code)) throw new Error("code must be an integer");
-      // The codes an application may send (RFC 6455 §7.4); `ws` throws on 1005, 1006 and the like.
-      if (code !== 1000 && (code < 3000 || code > 4999)) throw new Error("code must be 1000 or 3000-4999");
+      // Exactly the codes `ws` puts in a close frame (its isValidStatusCode): 1000-1014 as defined
+      // by RFC 6455 §7.4.1 and the IANA registry, less 1004 (reserved) and 1005/1006 (never sent in
+      // a close frame), plus 3000-4999. PROTOCOL.md §4.1's host codes (1001, 1002, 1007, 1008, 1009,
+      // 1011) are among them; `ws` throws on any other code.
+      const ok = (code >= 1000 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006) || (code >= 3000 && code <= 4999);
+      if (!ok) throw new Error("code must be 1000-1003, 1007-1014 or 3000-4999");
       call.session().close(code);
     },
     async quit() {

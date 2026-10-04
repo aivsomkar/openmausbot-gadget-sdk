@@ -106,8 +106,11 @@ test("post speech starts only after the reply's speech has played out", async (t
   const postBegin = await gadget.next("speak.begin", () => true, 5000);
   assert.equal(replyEnd.stream, replyBegin.stream);
   assert.equal(postBegin.turn, undefined);
+  await gadget.next("done", () => true, 5000);
   const ops = gadget.ops();
   assert.ok(ops.indexOf("speak.end") < ops.lastIndexOf("speak.begin"));
+  // The turn is in flight until its done (PROTOCOL.md §4.4): the post's turnless speak.begin follows it.
+  assert.ok(ops.indexOf("done") < ops.lastIndexOf("speak.begin"), `ops: ${ops.join(" ")}`);
   // Frames run up to 0.5 s ahead, so speak.end alone does not mean the reply has played out.
   assert.ok(begins[1] - begins[0] >= 300 - 60, `the post's speak.begin came ${begins[1] - begins[0]} ms after the reply's (300 ms of audio)`);
 });

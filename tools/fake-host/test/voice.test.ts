@@ -6,7 +6,8 @@ import { startFakeHost, type FakeHost } from "../src/server.ts";
 import type { FakeHostOptions } from "../src/options.ts";
 import type { HostEvent } from "../src/context.ts";
 import { cumulativeParts, fitReply } from "../src/voice.ts";
-import { toneSamples } from "../src/speech.ts";
+import { SpeechPlayer, toneSamples } from "../src/speech.ts";
+import type { GadgetSession } from "../src/session.ts";
 import { CAPS, connectGadget, delay, type GadgetOptions, type TestGadget } from "./gadget-client.ts";
 
 async function setup(t: TestContext, o: Partial<FakeHostOptions> = {}, g: Partial<GadgetOptions> = {}): Promise<{ h: FakeHost; gadget: TestGadget; events: HostEvent[] }> {
@@ -209,4 +210,27 @@ test("a disconnect mid-turn cancels the turn's timers", async (t) => {
   await gadget.close();
   await delay(300);
   assert.ok(!events.some((e) => e.event === "turn" && e.phase === "reply"), "no reply after the socket closed");
+});
+
+test("reply speech goes ahead of post speech that is queued but not yet playing", async () => {
+  // A session stand-in with a 16 kHz speaker that records every text frame.
+  const sent: Array<Record<string, unknown>> = [];
+  let nextStream = 1;
+  const session = {
+    hello: { caps: { speaker: { rate: 16000 } } },
+    closed: false,
+    onClose() {},
+    allocStream: () => nextStream++,
+    releaseStream() {},
+    send: (m: Record<string, unknown>) => (sent.push(m), true),
+    sendBinary: async () => true,
+  } as unknown as GadgetSession;
+  const player = new SpeechPlayer(session);
+  let second: Promise<boolean> | undefined;
+  // The second reply asks to play right after the first one has played out, while the post
+  // queued behind the first reply has not begun yet.
+  const first = player.play("t1", 40).then((played) => ((second = player.play("t2", 40)), played));
+  const post = player.play(undefined, 40);
+  assert.deepEqual([await first, await second, await post], [true, true, true]);
+  assert.deepEqual(sent.filter((m) => m.op === "speak.begin").map((m) => m.turn ?? "post"), ["t1", "t2", "post"]);
 });

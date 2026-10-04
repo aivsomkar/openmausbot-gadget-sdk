@@ -206,12 +206,12 @@ test("revoke sends error revoked, forgets the gadget, and replace / drop / close
   assert.deepEqual([ack.ok, ack.error], [false, `gadget ${d.gadget.id} is not connected`]);
 });
 
-test("close accepts only 1000 and 3000-4999; a refused code leaves the session working", async (t) => {
+test("close accepts 1000-1003, 1007-1014 and 3000-4999; a refused code leaves the session working", async (t) => {
   const { h } = await host(t, { replyIntervalMs: 20, toneMs: 0 });
   const { gadget } = await connectGadget({ port: h.port, enroll: "123456" });
-  for (const code of [1006, 1005, 1001, 999, 2999, 5000, 1.5]) {
+  for (const code of [1004, 1005, 1006, 999, 1015, 2999, 5000, 1.5]) {
     const ack = await h.command({ cmd: "close", code });
-    assert.deepEqual([ack.ok, ack.error], [false, code === 1.5 ? "code must be an integer" : "code must be 1000 or 3000-4999"], String(code));
+    assert.deepEqual([ack.ok, ack.error], [false, code === 1.5 ? "code must be an integer" : "code must be 1000-1003, 1007-1014 or 3000-4999"], String(code));
   }
   gadget.send({ op: "say", turn: "t00000001-1", text: "still there?" });
   assert.deepEqual(await gadget.next("done", () => true, 5000), { op: "done", turn: "t00000001-1", outcome: "ok" });
@@ -219,6 +219,11 @@ test("close accepts only 1000 and 3000-4999; a refused code leaves the session w
   assert.equal((await gadget.next("card")).title, "x");
   assert.equal((await h.command({ cmd: "close", code: 4999 })).ok, true);
   assert.equal((await gadget.closed).code, 4999);
+  // The codes PROTOCOL.md §4.1 lets a host close with, such as 1008, reach the gadget as sent.
+  const { gadget: fresh, result } = await connectGadget({ port: h.port, key: gadget.key });
+  assert.equal(result.op, "ready");
+  assert.equal((await h.command({ cmd: "close", gadget: fresh.id, code: 1008 })).ok, true);
+  assert.equal((await fresh.closed).code, 1008);
 });
 
 test("GadgetSession.close leaves the session open and sending when the socket refuses the close code", () => {

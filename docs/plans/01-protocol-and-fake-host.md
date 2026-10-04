@@ -5500,7 +5500,7 @@ await stop();
 - [ ] **Step 6: Run the fake-host tests to see them pass**
 
 Run: `npm run test:fake-host`
-Expected: PASS (58).
+Expected: PASS (68) (58 as first planned; the review fixes under "Deviations recorded during the build" add 10).
 
 - [ ] **Step 7: Try the CLI by hand**
 
@@ -5650,14 +5650,16 @@ There is no build step (Node runs the `.ts` files), no TypeScript compiler and n
 
 **Files:** none (fix-ups only if a check fails, each in the task that owns the file, then rerun this task).
 
+**Run note:** P1 landed directly on `main` (the build's run instructions replaced contract §1.3's `p1-protocol` branch and pushed each commit to `origin/main`). The commands below therefore use `main`, with `45e8118` (this plan's commit, the last one before Task 1) as the base.
+
 - [ ] **Step 1: Clean tree and commit list**
 
 ```bash
 git status --short -- . ':(exclude)docs'
-git log --oneline main..p1-protocol
+git log --oneline 45e8118..main -- . ':(exclude)docs'
 ```
 
-Expected: no output from `git status`; the log shows the commits of Tasks 1–12 (13 commits counting the docs commit). Changes under `docs/` written by other plan sessions are expected; P1 does not commit them.
+Expected: no output from `git status`; the log shows the commits of Tasks 1–12 and the three review-fix commits (`fix(P1): address review of tasks 5-8` and two `fix(P1): address final review`), 15 in all. Plan commits from other sessions touch only `docs/` and are not listed. Changes under `docs/` written by other plan sessions are expected; P1 does not commit them.
 
 - [ ] **Step 2: Everything on Node 22**
 
@@ -5667,7 +5669,7 @@ npm run vectors:check; echo "exit $?"
 npm test
 ```
 
-Expected: `exit 0` after the generator line; `npm test` reports PASS (33) for the protocol tests and then PASS (58) for the fake host.
+Expected: `exit 0` after the generator line; `npm test` reports PASS (33) for the protocol tests and then PASS (68) for the fake host.
 
 - [ ] **Step 3: Everything on Node 24 (the CI version)**
 
@@ -5677,12 +5679,12 @@ PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH" npm run vectors:check
 PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH" npm test
 ```
 
-Expected: `v24.14.1`; no diff; `ℹ pass 33` / `ℹ fail 0`, then `ℹ pass 58` / `ℹ fail 0`.
+Expected: `v24.14.1`; no diff; `ℹ pass 33` / `ℹ fail 0`, then `ℹ pass 68` / `ℹ fail 0`.
 
 - [ ] **Step 4: A fresh clone behaves like CI**
 
 ```bash
-D=$(mktemp -d /private/tmp/p1-verify.XXXXXX) && git clone -q --branch p1-protocol . "$D" && (cd "$D" && npm ci && npm run vectors:check && npm test && git status --porcelain | wc -l); rm -rf "$D"
+D=$(mktemp -d /private/tmp/p1-verify.XXXXXX) && git clone -q --branch main . "$D" && (cd "$D" && npm ci && npm run vectors:check && npm test && git status --porcelain | wc -l); rm -rf "$D"
 ```
 
 Expected: all green and `0` changed files at the end. The folder name is unique, so concurrent sessions running this step never delete each other's clone.
@@ -5691,7 +5693,7 @@ Expected: all green and `0` changed files at the end. The folder name is unique,
 
 ```bash
 git check-attr text -- protocol/vectors/prove.json keys/test-t1.key.hex
-git diff --check main...p1-protocol -- . ':(exclude)docs' && echo "no whitespace errors"
+git diff --check 45e8118...main -- . ':(exclude)docs' && echo "no whitespace errors"
 ruby -e 'require "yaml"; puts YAML.load_file(".github/workflows/ci.yml")["jobs"].keys.inspect'
 for f in $(git ls-files '*.ts' '*.json' README.md protocol tools); do LC_ALL=C perl -ne 'print "$ARGV:$.: invisible or control character\n" if /\xe2\x80[\x8b-\x8f\xa8-\xaf]|\xc2\xa0|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/' "$f"; done
 grep -n '"@noble/curves' $(git ls-files '*.ts')
@@ -5711,12 +5713,12 @@ Expected: `1`.
 
 - [ ] **Step 7: Stop and hand off**
 
-Do not push. Report to Omkar:
+Do not push (under the run note, P1's commits are already on `origin/main`). Report to Omkar:
 
-- the branch `p1-protocol` and its commits, ready for review and publishing;
+- P1's commits on `main` (Step 1's list), ready for review;
 - that P2a can branch `p2a-core` from it, and that P3a can vendor `protocol/vectors/` (every `*.json` plus `SHA256SUMS`) with the SDK commit in its `SOURCE` file;
 - for P3a's vendored `frames.json` test: `valid` covers both layers (PROTOCOL.md §4.9), the 2-byte header and, for kind `0x04`, the firmware payload. `fw-no-offset` (`0401aabbcc`) has a valid header, so the header-only `decodeBinary` of contract §3.2 returns a frame for it; the test must also run the kind-4 payload check (a u32 little-endian offset and 1–4096 bytes) before it expects `valid: false`, as `protocol/test/vectors.test.ts` does;
-- for P4b's comparator: `versions.json` now pins numeric identifiers past 2^53 (`big-numeric-prerelease`, `big-numeric-core`), which compare by exact integer value, so compare digit strings (leading zeros dropped, then length, then digits), not JavaScript numbers;
+- for P4b's comparator: `versions.json` now pins numeric identifiers past 2^53 (`big-numeric-prerelease`, `big-numeric-core`), which compare by exact integer value, so compare digit strings (leading zeros dropped, then length, then digits), not JavaScript numbers. `09-ota-delivery.md` was patched to do so in both of its comparators, Task 3's `compareVersions` and Task 10's `compareFirmwareVersions` (deviation 16);
 - that P2d's `THIRD_PARTY.md` must list `@noble/curves` 2.4.0 (MIT, vector generator only) and `ws` 8.22.0 (MIT, fake host only);
 - open questions for P2a and P3a (PROTOCOL.md wording beyond spec §4; confirm or raise before implementing):
   - `voice.drop` ends its turn with `done stopped`;
@@ -5756,6 +5758,12 @@ Final review (commit `fix(P1): address final review`). Where these differ from t
 11. **Version comparison (Task 5, `version.ts`; Task 6, vectors)** compares numeric identifiers, in the core and in the pre-release, as digit strings by exact integer value (leading zeros dropped, then length, then digits) instead of as JavaScript numbers, which lost precision past 2^53. `versions.json` gains `big-numeric-prerelease` (`1.0.0-rc.9007199254740993` > `1.0.0-rc.9007199254740992`) and `big-numeric-core` (`9007199254740993.0.0` > `9007199254740992.0.0`), pinned in `vectors.test.ts`; `frames.test.ts` adds values past 2^64 and leading zeros. PROTOCOL.md §4.1 says "numeric identifiers compare by exact integer value, whatever their length".
 12. **`frames.json` meaning of `valid` (Task 2, PROTOCOL.md §4.9)**: the table row now says that `valid` covers both the 2-byte header and, for kind `0x04`, the firmware payload, and that `fw-no-offset` has a valid header and an invalid firmware payload. The vector bytes are unchanged. Task 13's hand-off tells P3a.
 13. **Fake-host README (Task 12)**: a real board is pointed at the computer's LAN address (`host <this computer's LAN address>:8810` with `--bind 0.0.0.0`), not `127.0.0.1`, and the README says the fake host advertises no mDNS, so `host auto` does not find it. The `close` row lists the accepted codes, and the control section says that a command whose frame is over 16 KiB, or whose gadget is closing, gets `ok: false` and sends nothing.
+
+Second final review (a second commit named `fix(P1): address final review`). Where these differ from the code blocks in Tasks 8, 9, 10 and 12, the repository files are authoritative. The fake host gains one test, in `voice.test.ts`. Its counts at the ends of Tasks 8–12 are now 31, 44, 57, 63 and 68, and Task 13 expects `ℹ pass 33` for the protocol and `ℹ pass 68` for the fake host. Task 13 also runs on `main` now (its run note).
+
+14. **Speech order (Task 9, `speech.ts`)**. In `SpeechPlayer.pump()`, after `job.done(await this.stream(job))` the loop now waits one `setImmediate` before it starts the next queued stream. `job.done` only queues the continuation of `voice.ts`'s `speech.play(…).then(…)`, and that continuation is what sends the turn's `done ok`. So when a post with `speak: true` was queued behind a reply's speech, the post's turnless `speak.begin` went out before the turn's `done`: `… reply speak.begin speak.end post speak.begin done speak.end`. Contract §4.7 and the README say `speak.end`, then `done ok`, and PROTOCOL.md §4.4 says a turn is in flight until its `done`. That pause leaves a moment between two streams when nothing plays but a post may already be queued. So `play()` now puts reply speech (with a `turn`) at the head of the queue whether or not something plays. A reply that arrives in that moment still goes ahead of the post, as PROTOCOL.md §4.4's "a reply's `speak.begin` replaces a post stream that is playing" intends. Tests: "post speech starts only after the reply's speech has played out" (`display.test.ts`, Task 10) now also waits for `done` and asserts it precedes the post's `speak.begin`, and it failed with the order above before the fix. The new "reply speech goes ahead of post speech that is queued but not yet playing" (`voice.test.ts`) drives `SpeechPlayer` through a session stand-in. Before the `play()` change it failed with `t1 post t2`. The README `post` row says both.
+15. **`close` command codes (Task 8, `server.ts`; amends item 9)**. The command now accepts exactly the codes `ws` 8.22.0 puts in a close frame (`lib/validation.js` `isValidStatusCode`): 1000–1003, 1007–1014 and 3000–4999 (`code must be 1000-1003, 1007-1014 or 3000-4999`). Before, it accepted only 1000 and 3000–4999, and the comment wrongly cited RFC 6455 §7.4 for that rule. RFC 6455 §7.4.1 lets an endpoint send 1001–1003 and 1007–1011 (1012–1014 come from the IANA registry). PROTOCOL.md §4.1 lists 1001, 1002, 1007, 1008, 1009 and 1011 as host close codes, and contract §4.7 pins `close {code?}` with no range. A test driver could not make the fake host send any of them. Item 9's safety is kept: 1004, 1005, 1006 and anything else `ws` would throw on are still refused before `closing` is set. The test is renamed "close accepts 1000-1003, 1007-1014 and 3000-4999; a refused code leaves the session working". It refuses 1004, 1005, 1006, 999, 1015, 2999, 5000 and 1.5 with the session still working, then closes with 4999, reconnects the same gadget and closes with 1008. Both codes arrive as the gadget's close code. The README `close` row lists the same ranges.
+16. **P4b plan, `docs/plans/09-ota-delivery.md` (docs only, no P1 code)**. Item 11's `big-numeric-*` vectors break the comparators as P4b first wrote them. `semver()` did `.split(".").map(Number)` and `compareIdentifiers` did `Math.sign(Number(a) - Number(b))`, so each pair became the same double and compared as 0. Both vendored-vector tests (`releases.test.ts` and `gadgets.update.test.ts`) iterate every `compare` case. The P4b plan now keeps the core as digit strings in Task 3's `compareVersions` and Task 10's `compareFirmwareVersions`, and compares every numeric identifier with a `compareNumeric` that matches `protocol/lib/version.ts`'s `cmpNumeric`. Both code blocks, taken from that file, pass all 16 `compare` cases of the real `versions.json` both ways round. The code as first written failed exactly the four big-numeric checks. The P4b plan's "Verified while writing this plan" section records the patch.
 
 ## Self-review
 

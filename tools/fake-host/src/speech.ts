@@ -37,15 +37,17 @@ export class SpeechPlayer {
     session.onClose(() => this.cancelAll());
   }
 
-  /** Reply speech (with a turn) replaces whatever plays; post speech (no turn) waits until the
-   *  earlier stream has played out (PROTOCOL.md §4.4). Resolves true once the stream has played
-   *  out in real time, false when it is stopped or replaced first, or there is no speaker. */
+  /** Reply speech (with a turn) replaces whatever plays and goes ahead of queued post speech; post
+   *  speech (no turn) waits until the earlier stream has played out (PROTOCOL.md §4.4). Resolves
+   *  true once the stream has played out in real time, false when it is stopped or replaced
+   *  first, or there is no speaker. */
   play(turn: string | undefined, ms: number): Promise<boolean> {
     if (speakerRate(this.session) === null || ms <= 0) return Promise.resolve(false);
     return new Promise((done) => {
       const job: Job = { turn, ms, done };
-      if (turn !== undefined && this.playing) {
-        this.playing.cancelled = true;
+      if (turn !== undefined) {
+        // Between two streams nothing plays while a post may already be queued (pump()).
+        if (this.playing) this.playing.cancelled = true;
         this.queue.unshift(job);
       } else {
         this.queue.push(job);
@@ -79,6 +81,9 @@ export class SpeechPlayer {
       while (this.queue.length > 0 && !this.session.closed) {
         const job = this.queue.shift()!;
         job.done(await this.stream(job));
+        // job.done only queues its continuation (voice.ts sends the turn's `done ok` there): let it
+        // run before the next stream's speak.begin, so a post never begins inside a turn in flight.
+        await new Promise<void>((r) => setImmediate(r));
       }
     } finally {
       this.pumping = false;
