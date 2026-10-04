@@ -70,6 +70,7 @@ These are the inputs most likely to bite a person using the installer or the rel
 | `.github/workflows/release.yml`, `pages.yml`; `ci.yml` (append job `site`) | Release CI, Pages deploy, PR CI for this plan's code | 12 |
 | `NOTICE`, `THIRD_PARTY.md`, `CONTRIBUTING.md`, `tools/release/test/licensing.test.ts` | Licensing and the original-work rule | 13 |
 | `README.md`, `AGENTS.md`, `docs/installer-checklist.md`, `tools/release/test/docs.test.ts` | User docs, agent docs, on-device checklist | 14 |
+| `tools/screenshots/package.json`, `make.ts`, `test/make.test.ts`; `docs/images/*.png` | README images from the simulator's goldens and a headless-Chrome capture of the installer; the generated PNGs, committed | 15 |
 
 ## Scope map
 
@@ -98,7 +99,7 @@ These are the inputs most likely to bite a person using the installer or the rel
 | §8 | Ends with `gh workflow run pages.yml --ref main` | 12 |
 | §8 | `manifest.json` with absolute release URLs | 1, 3 |
 | §8 | Release key only in the `release` environment; public half compiled into the firmware; test key only in simulator/test builds; release CI asserts only `r*` ids | 4, 2 (t1 bytes absent, release key present), 12 (sdkconfig line) |
-| §5.10 | `AGENTS.md`: ESP-IDF via EIM or `install.sh`; build and flash each board; serial log; simulator and fake host; add a board (OTA slot size, speaker-rate rule, art profile); add an action within the `hello` limits; warning about unsafe actions | 14 (+ 11 for the non-interactive console) |
+| §5.10 | `AGENTS.md`: ESP-IDF via EIM or `install.sh`; build and flash each board; serial log; simulator and fake host; add a board (OTA slot size, speaker-rate rule, art profile); add an action within the `hello` limits, with no `pattern`, `patternProperties` or `"format": "regex"` in its params schema (P4a's Task 10 refuses those with 400, spec §7); warning about unsafe actions | 14 (+ 11 for the non-interactive console) |
 | §5.10 | README headline "ask your MausBot to flash it"; Remote access must be on; pairing at Pair a gadget | 14 |
 | §11 | `THIRD_PARTY.md` lists every dependency with its license (including pyserial for the console helper); `NOTICE` with OpenMausBot's Apache-2.0 attribution for the art; trademark sentence; contributors' original-work rule | 13 |
 | §11 | Before the SDK is published, Omkar confirms the expression geometry is project-owned (pre-publish check) | 4 (`docs/release-keys.md` §4 step 0), 14 (checklist item 20) |
@@ -112,7 +113,7 @@ These are the inputs most likely to bite a person using the installer or the rel
 Run on this Mac (macOS arm64, Node 22.22.3, Apple clang 21, OpenSSL 3.6.3) in `/private/tmp`, with stand-ins for P1's `protocol/lib` functions and P2a's key tables written from the contract's pinned signatures:
 
 - **Every file in this plan was written and run as given.** After the review revision, the plan was replayed again, task by task, from its own text: every file was extracted in task order into a scratch repository holding stand-ins for P1's `protocol/lib`, P2a's key tables, the contract's `gadget_types.h`/`gadget_util.h`/`gadget_console.h`, P2a's `console.c` (from P2a's plan), P2c's `16mb.csv` and P2b's provenance README. Each task's tests were then run at its boundary. Release tools: 13 → 22 → 29 → 33, then 36 → 40 after Tasks 13–14, type check clean. Site: 9 → 15 → 24 → 33 → 52 → 59, with `tsc` clean under `erasableSyntaxOnly` and `noUncheckedIndexedAccess`, and the firmware round-trip test compiled, not skipped. Python helper: 13 tests. `npm run build` bundles esptool-js, pako, atob-lite and spark-md5 with `licenses.txt`.
-- **Review fixes checked beyond the unit tests:** `partitionTableBin()` is byte-identical to ESP-IDF v6.0.3's `gen_esp32part.py --flash-size 16MB` output for P2c's `16mb.csv`, and `partitionProblems()` finds nothing wrong with that real binary. `split-argv.c` compiles with `-std=c11 -Wall -Wextra -Werror` against P2a's `console.c`. The two retry tests fail if the pair and Wi-Fi sides share one progress flag (a leftover `wifi: "connected", pair: "error"` already looks like progress). The AGENTS.md download and flash blocks, extracted from the replayed file, pass all four parts to a fake `esptool` under both `zsh -f` and bash, while the old forms fail in zsh exactly as reported. `omb_console.py` was run against a real pseudo-terminal through pyserial 3.5: the lines went (DTR, RTS) (1,1) → (1,0) → (0,0), and `pair` was sent only after the booting fake gadget answered `status`. `tail -f /dev/null | npm run serve &` serves `/`, `app.js` and `firmware/install.json`, and `pkill -f 'esbuild --servedir=dist'` stops it. `git check-ignore site/node_modules site/dist/` prints both paths with P1's `.gitignore`. The release job's three action SHAs were resolved with `git ls-remote` and `gh api repos/actions/<name>/commits/<tag>`.
+- **Review fixes checked beyond the unit tests:** `partitionTableBin()` is byte-identical to ESP-IDF v6.0.3's `gen_esp32part.py --flash-size 16MB` output for P2c's `16mb.csv`, and `partitionProblems()` finds nothing wrong with that real binary. `split-argv.c` compiles with `-std=c11 -Wall -Wextra -Werror` against P2a's `console.c`. The two retry tests fail if the pair and Wi-Fi sides share one progress flag (a leftover `wifi: "connected", pair: "error"` already looks like progress). The AGENTS.md download and flash blocks, extracted from the replayed file, pass all four parts to a fake `esptool` under both `zsh -f` and bash, while the old forms fail in zsh exactly as reported. `omb_console.py` was run against a real pseudo-terminal through pyserial 3.5: the lines went (DTR, RTS) (1,1) → (1,0) → (0,0), and `pair` was sent only after the booting fake gadget answered `status`. `tail -f /dev/null | npm run serve &` serves `/`, `app.js` and `firmware/install.json`, and `pkill -f 'esbuild --servedir=dist'` stops it. `git check-ignore site/node_modules site/dist/` prints both paths with P1's `.gitignore`. The release job's three action SHAs were resolved with `git ls-remote` and `gh api repos/actions/<name>/commits/<tag>`. AGENTS.md's no-regex bullet (P4a's 400 for `pattern`, `patternProperties` and `"format": "regex"`) was extracted with `docs.test.ts` from this plan's text: the "AGENTS.md covers spec §5.10" test passes, and fails with the bullet removed.
 - **The bundled page** (`dist/app.js` against `index.html`, in jsdom with a stubbed `navigator.serial`) renders the release version, the four boards, the devkit hint, the Pair a gadget copy, the "no firmware yet" state and the unsupported-browser state.
 - **ESP-IDF v6.0.3 sources** (fetched from Espressif's repository): `flasher_args.json.in` and `esptool_py_flash_target_image` (the `flash_files` map is `"<offset>": "<build-relative file>"`), `idf.py merge-bin` writes into the build directory, `esp_app_desc_t` sits at offset 32 (24-byte image header + 8-byte segment header) with magic `0xABCD5432`, version at 48 and project name at 80.
 - **esptool-js 0.7.0** type definitions and code: `ESPLoader({transport, baudrate, romBaudrate, terminal})`, `main(mode)`, `detectFlashSize()`, `writeFlash(FlashOptions)` with `Uint8Array` data, `writeReg(addr, value, mask)`, `readReg(addr, timeout?): Promise<number>`, `chip.CHIP_NAME`; `Transport.connect()` calls `device.open()`, so an already-open port makes it throw; its `HardReset` only lowers RTS, which is why the page has its own `resetToApp()`; it never touches the S3's watchdogs, which is why `flashBoard` does.
@@ -121,7 +122,7 @@ Run on this Mac (macOS arm64, Node 22.22.3, Apple clang 21, OpenSSL 3.6.3) in `/
 - **Workflows:** all three YAML files parse (js-yaml 4.1.0); the Pages copy step, the publish step and the version guard were run against a fake `gh` (release / no release / API failure; release vs prerelease; five tags). macOS `sha256sum` is not GNU, so the Pages checksum check lives in `check-firmware.ts` instead of `sha256sum --ignore-missing`.
 - **CLIs:** `esptool` 5.4.0 (`write-flash <address> <file>…`, `--chip`, `--port`), `gh` 2.89 (`release create --verify-tag --latest=false`, `release download --pattern`), `esbuild --servedir=dist --serve=127.0.0.1:8080`. The console helper ran against a real pseudo-terminal through pyserial 3.5.
 - **Licenses:** npm `license` fields for every npm package; Espressif's component registry plus the license files of the five managed driver components (all Apache-2.0); `espressif/cjson` MIT.
-- **Not verified here:** anything on GitHub (container build, environment approval, release creation, Pages deploy), anything on a real board or real browser (Chrome's `getPorts()` behaviour for a held port against a vanished one, the watchdog registers, how P2a's firmware moves `status` after a new `pair` or `wifi`), and the PowerShell block in AGENTS.md (no Windows machine here). The GitHub Actions versions come from research R7 (dated 2026-10-04), and the tags were confirmed to exist. Task 15 lists what remains for hardware.
+- **Not verified here:** anything on GitHub (container build, environment approval, release creation, Pages deploy), anything on a real board or real browser (Chrome's `getPorts()` behaviour for a held port against a vanished one, the watchdog registers, how P2a's firmware moves `status` after a new `pair` or `wifi`), and the PowerShell block in AGENTS.md (no Windows machine here). The GitHub Actions versions come from research R7 (dated 2026-10-04), and the tags were confirmed to exist. Task 16 lists what remains for hardware.
 
 ---
 
@@ -6072,7 +6073,7 @@ git commit -m "docs: NOTICE, THIRD_PARTY.md and CONTRIBUTING with the original-w
 - Test: `tools/release/test/docs.test.ts`
 
 **Interfaces:**
-- Consumes: commands pinned in contract §1.4–§1.5 (ESP-IDF install, board build, simulator at `build/host/ports/sim/gadget-sim`, fake host), §2.3 board table, §2.10 `gadget_action_register`, §2.11 console, §2.16 simulator flags, §2.17 `board_api.h`; Task 11's helper; Task 10's copy.
+- Consumes: commands pinned in contract §1.4–§1.5 (ESP-IDF install with EIM's macOS prerequisites in front, as in [Contract notes](#contract-notes); board build, simulator at `build/host/ports/sim/gadget-sim`, fake host), §2.3 board table, §2.10 `gadget_action_register`, §2.11 console, §2.16 simulator flags, §2.17 `board_api.h`; Task 11's helper; Task 10's copy; P4a's rule (its Task 10, "never runs a regular expression from a gadget's schema") that MausBot refuses, with 400, to run an action whose params schema uses `pattern`, `patternProperties` or `"format": "regex"` anywhere inside it, while a param merely named `pattern` is fine.
 - Produces: the docs the spec requires (§5.10, §6.4 copy rule, §11).
 
 - [ ] **Step 1: Write the failing tests**
@@ -6106,7 +6107,7 @@ test("README: headline path, Remote access, Pair a gadget, installer and tradema
 test("AGENTS.md covers spec §5.10", async () => {
   const agents = await read("AGENTS.md");
   for (const needle of [
-    "eim install -i v6.0.3 -t esp32s3",
+    "brew install libgcrypt glib pixman sdl2 libslirp dfu-util ninja && brew tap espressif/eim && brew install eim && eim install -i v6.0.3 -t esp32s3",
     "./install.sh esp32s3",
     "idf.py -B build/<board> -D GADGET_BOARD=<board> -D SDKCONFIG=build/<board>/sdkconfig build",
     "flash monitor",
@@ -6122,6 +6123,9 @@ test("AGENTS.md covers spec §5.10", async () => {
     "Art profile",
     "## Add an action",
     "gadget_action_register(name, description, schema, risk, handler)",
+    // P4a refuses these schemas with 400; a maker who registers one has an action no bot can run.
+    'MausBot refuses to run an action whose params schema uses `pattern`, `patternProperties` or `"format": "regex"`',
+    "use `enum`, `minimum`/`maximum` and `maxLength` instead",
     "GADGET_RISK_CONFIRM",
     "does not authenticate MausBot",
     "Do not register actions whose misuse is unsafe",
@@ -6360,10 +6364,10 @@ Install ESP-IDF (next section), then build and flash the board as in [Build and 
 
 ## Install ESP-IDF v6.0.3
 
-With Espressif's EIM installer on macOS:
+With Espressif's EIM installer on macOS. The `brew install` at the start adds EIM's prerequisites: on macOS, EIM checks for them but does not install them, and it stops if one is missing. Homebrew skips any that are already installed.
 
 ```sh
-brew tap espressif/eim && brew install eim && eim install -i v6.0.3 -t esp32s3
+brew install libgcrypt glib pixman sdl2 libslirp dfu-util ninja && brew tap espressif/eim && brew install eim && eim install -i v6.0.3 -t esp32s3
 . ~/.espressif/tools/activate_idf_v6.0.3.sh
 ```
 
@@ -6374,7 +6378,7 @@ git clone -b v6.0.3 --depth 1 --recursive --shallow-submodules https://github.co
 cd ~/esp/esp-idf-v6.0.3 && ./install.sh esp32s3 && . ./export.sh
 ```
 
-ESP-IDF needs ninja: `brew install ninja`, or `python3 tools/idf_tools.py install ninja` inside the ESP-IDF folder. `idf.py --version` must print `ESP-IDF v6.0.3`. Every new shell needs the activate (or `export.sh`) line again; `eim run "idf.py build" v6.0.3` runs one command without activating.
+ESP-IDF needs ninja. The EIM line above installs it. With `install.sh`, run `brew install ninja`, or `python3 tools/idf_tools.py install ninja` inside the ESP-IDF folder. `idf.py --version` must print `ESP-IDF v6.0.3`. Every new shell needs the activate (or `export.sh`) line again; `eim run "idf.py build" v6.0.3` runs one command without activating.
 
 On Windows, download the EIM command-line installer from Espressif's page https://dl.espressif.com/dl/eim/ and run it from PowerShell (not by double-clicking): `.\eim install -i v6.0.3 -t esp32s3 -a true` (`-a true` installs missing prerequisites such as Git and Python). Then open the `IDF_PowerShell` desktop icon EIM creates, or run single commands with `.\eim run "idf.py --version" v6.0.3`. The board's port is `COMn` (see [On Windows](#on-windows)), so `-p COM5` replaces `-p /dev/cu.usbmodem1101` below.
 
@@ -6497,6 +6501,7 @@ void register_lamp_action(void) {
 
 `gadget_action_register(name, description, schema, risk, handler)` checks the `hello` limits: name `/^[a-z][a-z0-9_.-]{0,31}$/`, a description of 1–200 characters, a params schema of at most 1 KiB, at most 16 actions including the built-in `chime`, so 15 of your own, and a whole `hello` of at most 16 KiB. It returns `GADGET_ERR_LIMIT`, `GADGET_ERR_ARG` or `GADGET_ERR_STATE` (a duplicate name) otherwise. The handler runs on the main thread, must return within 100 ms, and either fills `data` and returns true or writes a short Latin-1 reason into `error` and returns false.
 
+- MausBot refuses to run an action whose params schema uses `pattern`, `patternProperties` or `"format": "regex"`; use `enum`, `minimum`/`maximum` and `maxLength` instead. The check looks inside nested schemas too (`items`, each property), so no regular expression from a gadget ever runs on your computer; a param that is only *named* `pattern` is fine.
 - `GADGET_RISK_SAFE` actions run when a bot asks.
 - `GADGET_RISK_CONFIRM` actions always ask the person on the computer first, even in Full access, unless they chose Always allow for that action on that gadget.
 - **Do not register actions whose misuse is unsafe**: unlocking a door, switching mains power, anything that could hurt someone or damage something. In v1 the gadget does not authenticate MausBot (the connection is plain `ws://` on your network), so a device that impersonates MausBot on the LAN can send `act`, and `confirm` is enforced only on the Mac.
@@ -6641,7 +6646,7 @@ Real renders from the simulator, which runs the same firmware code as the boards
 
 Rewrite the alt texts to describe what each render actually shows; read the images to check. In the install section, add `<img src="docs/images/installer.png" width="640" alt="The browser installer">` under the installer link.
 - [ ] **Step 7: Extend `docs.test.ts`:** the README references every `docs/images/*.png`; every referenced image exists and is a valid PNG (check the 8-byte signature); every `<img>` has a non-empty `alt`. Run `node --test tools/release/test/` → passes.
-- [ ] **Step 8: Commit** `tools/screenshots/`, `docs/images/`, `README.md` and `tools/release/test/docs.test.ts` with the `-- <paths>` form, message `docs(readme): screenshots of every gadget screen and the installer` plus the trailer, then push.
+- [ ] **Step 8: Commit** `tools/screenshots/`, `docs/images/`, `README.md` and `tools/release/test/docs.test.ts` with the `-- <paths>` form, message `docs(readme): screenshots of every gadget screen and the installer` plus the trailer. Do not push.
 
 Desktop screenshots (the "Pair a gadget" dialog and a gadget row in MausBot's Remote access settings) are added after the OpenMausBot hub (P3a) is built. Leave them out of this task.
 
@@ -6652,7 +6657,7 @@ Desktop screenshots (the "Pair a gadget" dialog and a gadget row in MausBot's Re
 - [ ] **Step 1: The branch is complete and clean**
 
 Run: `git status --short && git log --oneline p2c-esp32..HEAD`
-Expected: no uncommitted changes; 14 commits, Tasks 1–14 in order.
+Expected: no uncommitted changes; 15 commits, Tasks 1–15 in order.
 
 - [ ] **Step 2: Installer from a clean install**
 
@@ -6747,11 +6752,14 @@ Add nothing to the repository. Report this list with the branch hand-off (it is 
 
 ## Contract notes
 
-No pinned item changed. Additions, all private to P2d (contract §0 item 3):
+One pinned item changes. **Contract §1.4, ESP-IDF install (macOS) row:** AGENTS.md's EIM line puts `brew install libgcrypt glib pixman sdl2 libslirp dfu-util ninja && ` in front of the pinned `brew tap espressif/eim && brew install eim && eim install -i v6.0.3 -t esp32s3`, the same change as P2c's addition 7. On macOS, EIM checks these prerequisites but does not install them, and stops when one is missing, so the pinned line alone fails on a clean Mac. `docs.test.ts` expects the full line. Contract §1.4's row gets the same prefix, so the contract, P2c and AGENTS.md give one command.
+
+Additions, all private to P2d (contract §0 item 3):
 
 - Extra exports in `site/src/console.ts` and `site/src/install.ts` beside the pinned ones; extra site modules (`errors.ts`, `flash.ts`, `serial-console.ts`, `setup.ts`, `copy.ts`, `boards.ts`, `main.ts`) and `site/scripts/`.
 - `tools/release/` contents (the contract leaves them to P2d) and `tools/release/tsconfig.json`.
 - New files outside the contract's layout: `tools/console/omb_console.py` and its test (the non-interactive console AGENTS.md needs for agents), and `docs/installer-checklist.md`.
+- Task 15's README images: `tools/screenshots/` (a private npm package with its own `pngjs` 7.0.0 devDependency: `package.json`, its lock file, `make.ts`, `test/make.test.ts`) and `docs/images/` (the generated PNGs, committed). No other plan reads them. Contract §1.1 lists both paths in the layout, and §5.1 gives both to P2d.
 - The `site` CI job keeps its pinned id and command and adds three steps after it (release tools and docs tests, release tools type check, console helper tests).
 - `firmware/core/src/keys_release.c` is written by `tools/release/gen-release-keys.ts` when Omkar adds r1; the generated text replaces P2a's sentinel layout with the same meaning.
 - `site/test/split-argv.c` compiles P2a's `firmware/core/src/console.c` on its own, with stubs for the two `util.c` functions it calls (`gadget_pair_code_valid`, `gadget_utf8_len`). If P2a makes `console.c` call more of `util.c`, the stubs grow; nothing in P2a changes.
@@ -6762,3 +6770,4 @@ No pinned item changed. Additions, all private to P2d (contract §0 item 3):
 
 - When `pair <code>` is accepted, the next `status` shows `pair` = `code_stored` or `connecting` and no `error` field. When `wifi` is accepted, the next `status` shows `wifi` = `connecting`. Spec §4.3 leaves `pair` = `error` after `bad_code` "until a new `pair` command", but neither spec §5.6 nor contract §2.11 says that the new command clears it at once. P2d works around this: a leftover error counts only after progress on that side or after three status replies. If P2a pins this behaviour, the page reports a second wrong code about three seconds sooner.
 - While the gadget retries after `device_limit` (spec §4.3: it keeps the code and retries every 10 s for 120 s), `status` reports `pair` = `error` with `error` = `device_limit`. P2d keeps polling on exactly that state and shows "MausBot has too many devices…". If P2a reports it some other way (for example `connecting`), the page falls back to its timeout message, which tells the person to check Remote access.
+- Optional, for makers: P2a's Task 13 could make `gadget_action_register` return `GADGET_ERR_ARG` for a params schema that uses `pattern`, `patternProperties` or `"format": "regex"` anywhere inside it (but not for a param merely named `pattern`), with a test beside its `"{not json"` and `"[1,2]"` cases. P4a's Task 10 refuses such an action with 400 when a bot calls it, so today a maker can register an action that no bot can ever run, and finds out only from a failed tool call. AGENTS.md's "Add an action" states the rule either way, and already lists `GADGET_ERR_ARG`, so it needs no change if P2a adds the check.

@@ -17,12 +17,12 @@
 - Original-work rule (spec §11): never open, fetch, quote or cite other gadget SDKs or voice-assistant firmware projects. Pins and init sequences come from the vendors' schematics, datasheets and published driver components (Espressif, Waveshare, X-Powers), used as references. Driver components are fetched at build time under their own licenses and never copied into this repository.
 - ESP-IDF **v6.0.3**; CI image `espressif/idf:v6.0.3`; component manifest `idf: ">=6.0.3,<6.1"`; the optional `esp32-idf55` job relaxes it to `>=5.5.5,<6.1` on `espressif/idf:v5.5.5`. ESP project `cmake_minimum_required(VERSION 3.22)`.
 - Install on this Mac (contract §1.4, plus EIM's macOS prerequisites, which EIM checks but does not install on POSIX systems): `brew install libgcrypt glib pixman sdl2 libslirp dfu-util ninja && brew tap espressif/eim && brew install eim && eim install -i v6.0.3 -t esp32s3`, then `. ~/.espressif/tools/activate_idf_v6.0.3.sh`. Fallback: `git clone -b v6.0.3 --depth 1 --recursive --shallow-submodules https://github.com/espressif/esp-idf.git ~/esp/esp-idf-v6.0.3 && cd ~/esp/esp-idf-v6.0.3 && ./install.sh esp32s3 && . ./export.sh` (then use `. ~/esp/esp-idf-v6.0.3/export.sh` wherever this plan activates IDF). Python 3.10–3.14 (local 3.14.6).
-- **LVGL 9.6.0** (`lvgl/lvgl: "9.6.0~1"`), configured on the device only through `CONFIG_LV_*` in `sdkconfig.defaults`. **No Waveshare BSP, no `esp_lvgl_port`, no `esp_lvgl_adapter`.** cJSON only from `espressif/cjson`, included as `"cJSON.h"`; never `REQUIRES json`.
+- **LVGL 9.6.0** (`lvgl/lvgl: "9.6.0~1"`), configured on the device only through `CONFIG_LV_*` in `sdkconfig.defaults`. That file pins `CONFIG_LV_CONF_SKIP=y` (the simulator's `firmware/ui/lv_conf.h` is on the ui component's include path and must never be read on the device) and both LVGL image caches off, `CONFIG_LV_CACHE_DEF_SIZE=0` and `CONFIG_LV_IMAGE_HEADER_CACHE_DEF_CNT=0` (P2b's `ui_lv_requirements.h` `#error`s otherwise). All three equal LVGL's Kconfig defaults; they are written out so the host test `test_shared_defaults` checks them before any `idf.py build`. **No Waveshare BSP, no `esp_lvgl_port`, no `esp_lvgl_adapter`.** cJSON only from `espressif/cjson`, included as `"cJSON.h"`; never `REQUIRES json`.
 - Crypto is core's (PSA only). The port only calls `psa_crypto_init()` at boot, before `core_init()` (contract §2.5).
 - Build command (spec §5.1), from `firmware/ports/esp32/`: `idf.py -B build/<board> -D GADGET_BOARD=<board> -D SDKCONFIG=build/<board>/sdkconfig [-D PROJECT_VER=<version>] build`. `PROJECT_VER` defaults to `0.0.0-dev`. The project fails when `GADGET_BOARD` is unset or not a directory under `boards/`, and when `-D GADGET_TEST_KEYS=1` or `-D GADGET_NVS_ENCRYPT=1` is used in the standard `build/<board>` directory (those variants get their own `-B` directory). App image: `build/<board>/openmausbot-gadget.bin`.
 - Partition table `partitions/16mb.csv`, identical for all boards and stable across releases: nvs 0x9000/0x6000, otadata 0xF000/0x2000, phy_init 0x11000/0x1000, ota_0 0x20000/0x600000, ota_1 0x620000/0x600000, coredump 0xC20000/0x10000. Every board's `caps.ota.max` = 6291456 = the slot size; CI asserts `app.bin` ≤ 6291456.
 - Shared `sdkconfig.defaults` contains `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` and `# CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK is not set`. Anti-rollback is never enabled. Probation (5 min) is core's; the port only reports `PENDING_VERIFY` and marks valid/invalid.
-- Every board's `sdkconfig.defaults` sets `CONFIG_GADGET_BOARD_ID`, `CONFIG_GADGET_ART_PROFILE`, `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, `CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/16mb.csv"` and `# CONFIG_GADGET_TEST_KEYS is not set`.
+- Every board's `sdkconfig.defaults` sets `CONFIG_GADGET_BOARD_ID`, `CONFIG_GADGET_ART_PROFILE`, `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, `CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/16mb.csv"` and `# CONFIG_GADGET_TEST_KEYS is not set`, and never sets the three LVGL pins above (a board file wins over the shared one).
 - NVS: namespace `gadget`, keys exactly the `GADGET_KEY_*` names, committed on every write. NVS encryption is opt-in: Kconfig `GADGET_NVS_ENCRYPT` = HMAC scheme with `CONFIG_NVS_SEC_HMAC_EFUSE_KEY_ID=5`; its help text warns about the permanent eFuse burn.
 - Audio: codec boards (amoled-175c, amoled-175, lcd-154) run ES8311 + ES7210 duplex at **16 kHz** on one I2S clock; devkit speaker at **24 kHz** on a separate controller. MIC1 only, mono, no echo cancellation in v1.
 - amoled-175c PWR is GPIO3, active high (AXP2101 power key mirror; 6 s hold powers off). lcd-154 `board_early_init()` drives BAT_EN (GPIO2) high first; lcd-154 battery is supported (BAT_ADC GPIO1 ×3, CHG_STAT GPIO3 low = charging).
@@ -56,13 +56,14 @@ Real hardware and an ESP-IDF installation were not available (ESP-IDF is not ins
 
 Re-checked after review (2026-10-04, same machine, under `/private/tmp`):
 
-- ESP-IDF v6.0.3's early expansion was simulated in CMake script mode with a stand-in for `tools/cmake/scripts/component_get_requirements.cmake` (its `idf_component_register` macro records the requirements and returns). P2b's finished `firmware/ui/CMakeLists.txt` fails there with `CONFIGURE_DEPENDS is invalid for script and find package modes`; after Task 2 Step 6b's command, run exactly as written, it passes and reports `REQUIRES lvgl__lvgl;core` and `INCLUDE_DIRS .;art;fonts`. The Step 6b command is idempotent and prints the expected head of the file. `main/CMakeLists.txt` passes the same simulation and the normal pass, with `board.cmake` (its drivers only) and without it (all seven drivers).
+- ESP-IDF v6.0.3's early expansion was simulated in CMake script mode with a stand-in for `tools/cmake/scripts/component_get_requirements.cmake` (its `idf_component_register` macro records the requirements and returns). P2b's finished `firmware/ui/CMakeLists.txt`, which opens with P2b's early-expansion guard (contract §2.17), passes there and reports `REQUIRES lvgl__lvgl;core` and `INCLUDE_DIRS .;art;fonts`; the same file with the guard's six lines removed fails with `CONFIGURE_DEPENDS is invalid for script and find package modes` (re-run 2026-10-05). Task 2 Step 6b's grep prints its four expected lines for P2b's file and only `set(UI_SRCS` for the copy without the guard. `main/CMakeLists.txt` passes the same simulation and the normal pass, with `board.cmake` (its drivers only) and without it (all seven drivers).
 - The variant-directory guard of the project file was run with `cmake -P` from inside `build/amoled-175c` (refuses `GADGET_TEST_KEYS=1` and `GADGET_NVS_ENCRYPT=1`, accepts `=0` and none, and refuses through a `/tmp` symlink too) and from `build/ota-a` (accepts). A small CMake project confirmed that a failed configure still caches `-D` values, hence the "delete it" hint.
 - The changed C (`pl_mdns`, `pl_power`, `hal_mdns.c`, `hal_audio.c`, `drv_es_codec.c`, `drv_i2s_simplex.c`, `drv_co5300.{h,c}`, `drv_lipo_adc.c`, the four `board.c` with their `board.h`) passes the same header-backed `clang -fsyntax-only` check for every board, as gnu2x and gnu17; all 13 host tests pass, also with `-fsanitize=address,undefined`; `pl_mdns.c` and `pl_power.c` also compile with `-std=c11`/`-std=gnu2x -Wpedantic -Wshadow -Wformat=2 -Werror`.
 - `build-all.sh` was run with a fake `idf.py` and `nm`: four boards pass; a standard build whose sdkconfig has `CONFIG_GADGET_TEST_KEYS=y` stops with `build-all: devkit has test keys or NVS encryption on`.
 - The appended CI block parses with Ruby's YAML loader and lists the step conditions Task 14 Step 3 expects; every `run:` block passes `bash -n`, and the guard step, run with a fake `idf.py`, passes when the guard fires and exits 1 when it does not.
 - The extracted `docs/hardware-checklist.md` passes Task 15 Step 2 (sixteen `ok`) and Task 16 Step 5's SPDX, link and placeholder checks in a scratch git repository; every table row has the right number of columns.
 - `idf.py efuse-summary` exists in ESP-IDF v6.0.3 (`tools/idf_py_actions/serial_ext.py` at the tag); `project.cmake` at v6.0.3 prints `Component ${build_component} will be linked with -Wl,--whole-archive` with the `idf::` alias; idf-component-manager 3.1.2 writes the lock with `YAML(typ='safe')`.
+- LVGL pins for P2b's `ui_lv_requirements.h` (2026-10-05): LVGL 9.6.0's Kconfig defines `LV_CACHE_DEF_SIZE` and `LV_IMAGE_HEADER_CACHE_DEF_CNT` (menu "Image Settings", `int`, default 0) and `LV_CONF_SKIP` (menu "Build", `bool`, default y) with no `depends on`; `include/lvgl/config/lv_conf_internal.h` maps `CONFIG_LV_CACHE_DEF_SIZE` and `CONFIG_LV_IMAGE_HEADER_CACHE_DEF_CNT` to the macros the header checks and `CONFIG_LV_CONF_SKIP` to `LV_CONF_SKIP`. `test_board_defaults.c`, the shared and the four board `sdkconfig.defaults`, extracted from Task 2, were built with `clang -std=c11 -Wall -Wextra -Werror` against core's `boards.c` and Unity 2.7.0: with no files it prints Step 2's three failures (the first at `test_board_defaults.c:21`), with Step 3's files all three tests pass, and each of these fails it: deleting any of the three LVGL lines from the shared file, `# CONFIG_LV_CONF_SKIP is not set` (in place of the `=y` line or after it), `CONFIG_LV_CACHE_DEF_SIZE=65536`, and a board file that sets any of the three.
 
 ## Scope
 
@@ -70,7 +71,7 @@ Re-checked after review (2026-10-04, same machine, under `/private/tmp`):
 
 **Owned elsewhere (not built here):**
 - Core logic, the HAL/core/UI headers, the console grammar and `@omb` lines, probation timing, the OTA state machine, PSA crypto, key tables (`keys_release.c`, `keys_test.c`), `core/CMakeLists.txt` — **P2a** (P2c may only correct the ESP branch, contract §2.17).
-- LVGL screens, Maus art, fonts, `ui_lv_requirements.h`, `lv_conf.h`, `ui/CMakeLists.txt` (including compiling only the board's art profile on ESP) — **P2b**.
+- LVGL screens, Maus art, fonts, `ui_lv_requirements.h`, `lv_conf.h`, `ui/CMakeLists.txt` (including compiling only the board's art profile on ESP, and the ESP-IDF early-expansion guard the file opens with, contract §2.17) — **P2b**.
 - Browser installer, `release.yml` (it reuses this plan's build command, `check-size.sh` and asset names), `pages.yml`, `AGENTS.md` (documents `board_api.h` and "add a board"), README, NOTICE, THIRD_PARTY.md, filling `keys_release.c` — **P2d**.
 - Protocol text, vectors and the fake host — **P1**. Everything in OpenMausBot — **P3a, P3b, P4a, P4b**.
 
@@ -94,9 +95,9 @@ All paths are relative to the repository root. Everything under `firmware/ports/
 ```
 firmware/ports/esp32/
   CMakeLists.txt              ESP-IDF project: board guard, per-board defaults, PROJECT_VER, lock file per board
-  sdkconfig.defaults          shared Kconfig defaults (flash, rollback, PSRAM, console, LVGL, websocket TX lock)
+  sdkconfig.defaults          shared Kconfig defaults (flash, rollback, PSRAM, console, LVGL from Kconfig only with image caches off, websocket TX lock)
   sdkconfig.nvs-encrypt       opt-in overlay (-D GADGET_NVS_ENCRYPT=1): HMAC NVS encryption, eFuse block 5
-  sdkconfig.test-keys         bench-only overlay (-D GADGET_TEST_KEYS=1): trust test key t1 for fake-host OTA
+  sdkconfig.test-keys         bench-only overlay (-D GADGET_TEST_KEYS=1): trust test key t1 for bench OTA (fake host or MausBot's Update button)
   partitions/16mb.csv         the one partition table
   dependencies.lock.<board>   component-manager lock files, generated by the first build, committed (4 files)
   main/
@@ -156,7 +157,6 @@ firmware/ports/esp32/
     test_pl_power.c  test_pl_display.c  test_pl_otaq.c
 docs/hardware-checklist.md    manual on-device checks per board
 .github/workflows/ci.yml      + jobs esp32 (4 boards + nvs-encrypt variant, host tests, build-all.sh in one checkout) and esp32-idf55
-firmware/ui/CMakeLists.txt    + an ESP-IDF early-expansion guard at the top (Task 2 Step 6b; see Contract deviations)
 ```
 
 Prefixes: `hal_` the contract's HAL, `board_` board glue (contract §2.1), `port_` port internals, `pl_` port logic (pure C, private to this plan), `drv_` drivers (private to this plan).
@@ -174,7 +174,7 @@ idf_component_get_property(lvgl_lib lvgl__lvgl COMPONENT_LIB)
 target_compile_options(${lvgl_lib} PRIVATE -Wno-error)
 ```
 
-**If core or ui sources fail to compile under IDF 6**, stop and report it: those files belong to P2a and P2b (contract §5.1); this plan may only correct the `if(ESP_PLATFORM)` branches of their `CMakeLists.txt` (contract §2.17). The one exception is the early-expansion guard Task 2 Step 6b puts at the top of `firmware/ui/CMakeLists.txt`, listed under Contract deviations.
+**If core or ui sources fail to compile under IDF 6**, stop and report it: those files belong to P2a and P2b (contract §5.1); this plan may only correct the `if(ESP_PLATFORM)` branches of their `CMakeLists.txt` (contract §2.17). The ESP-IDF early-expansion guard that opens `firmware/ui/CMakeLists.txt` sits outside those branches and is P2b's (contract §2.17): Task 2 Step 6b checks that it is there and stops if it is not; this plan never adds or edits it.
 
 ---
 
@@ -530,10 +530,10 @@ git commit -m "feat(esp32): 16 MB partition table, size check and host test harn
 - Create: `firmware/ports/esp32/tools/build-all.sh`
 - Create (generated by the first build, then committed): `firmware/ports/esp32/dependencies.lock.{amoled-175c,amoled-175,lcd-154,devkit}`
 - Modify (only if Step 6 finds it missing): `firmware/core/CMakeLists.txt`, inside `if(ESP_PLATFORM)` only (contract §2.17)
-- Modify: `firmware/ui/CMakeLists.txt` — six lines at the top, before `set(UI_SRCS` (Step 6b; outside the ESP branch, so it is listed under Contract deviations)
+- Check, never modify: `firmware/ui/CMakeLists.txt`'s early-expansion guard (Step 6b; P2b owns it, contract §2.17)
 
 **Interfaces:**
-- Consumes: `gadget_board_by_id()`, `gadget_board_t.display_name` (P2a); the `if(ESP_PLATFORM)` branches of `firmware/core/CMakeLists.txt` (`REQUIRES espressif__cjson mbedtls`, `CONFIG_GADGET_TEST_KEYS` → `GADGET_TEST_KEYS=1`) and `firmware/ui/CMakeLists.txt` (`REQUIRES lvgl__lvgl core`, compiles only `art/${CONFIG_GADGET_ART_PROFILE}`), contract §2.15 and §2.17.
+- Consumes: `gadget_board_by_id()`, `gadget_board_t.display_name` (P2a); the `if(ESP_PLATFORM)` branches of `firmware/core/CMakeLists.txt` (`REQUIRES espressif__cjson mbedtls`, `CONFIG_GADGET_TEST_KEYS` → `GADGET_TEST_KEYS=1`) and `firmware/ui/CMakeLists.txt` (`REQUIRES lvgl__lvgl core`, compiles only `art/${CONFIG_GADGET_ART_PROFILE}`), contract §2.15 and §2.17; P2b's early-expansion guard at the top of `firmware/ui/CMakeLists.txt` (`if(ESP_PLATFORM AND CMAKE_BUILD_EARLY_EXPANSION)` → `idf_component_register(INCLUDE_DIRS . art fonts REQUIRES lvgl__lvgl core)` → `return()` → `endif()`, contract §2.17).
 - Produces: Kconfig symbols `CONFIG_GADGET_BOARD_ID` (string), `CONFIG_GADGET_ART_PROFILE` (string `s240`/`s150`), `CONFIG_GADGET_TEST_KEYS` (bool, default n), `CONFIG_GADGET_NVS_ENCRYPT` (bool, default n); build property `GADGET_BOARD`; CMake switches `-D GADGET_NVS_ENCRYPT=1` and `-D GADGET_TEST_KEYS=1` (each appends an overlay to `SDKCONFIG_DEFAULTS`); the board pin macros `BOARD_*` in each `board.h` (used by `display.c` and `board.c`); an optional `boards/<id>/board.cmake` setting `BOARD_DRIVER_SRCS` (file names in `main/drivers/`; a board without one compiles every shared driver and the linker's `--gc-sections` drops the unused ones, so the only required board files stay `board.h`, `board.c` and `sdkconfig.defaults`, as spec §5.1 and contract §1.1 list them); `tools/build-all.sh [board...]` (env `IDF_ARGS`, `SKIP_ART_CHECK=1`; fails when a standard `build/<board>/sdkconfig` has test keys or NVS encryption on); the project refuses `-D GADGET_TEST_KEYS=1` or `-D GADGET_NVS_ENCRYPT=1` in the standard `build/<board>` directory.
 
 - [ ] **Step 1: Write the failing board-defaults test**
@@ -598,6 +598,11 @@ static void test_each_board_defaults_match_the_table(void) {
     TEST_ASSERT_TRUE_MESSAGE(has_line(text, "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/16mb.csv\""), b->id);
     TEST_ASSERT_TRUE_MESSAGE(has_line(text, "# CONFIG_GADGET_TEST_KEYS is not set"), b->id);
     TEST_ASSERT_NULL_MESSAGE(strstr(text, "CONFIG_GADGET_TEST_KEYS=y"), b->id);
+    /* a board file wins over the shared one: it must not touch the LVGL
+     * pins that test_shared_defaults checks */
+    TEST_ASSERT_NULL_MESSAGE(strstr(text, "CONFIG_LV_CONF_SKIP"), b->id);
+    TEST_ASSERT_NULL_MESSAGE(strstr(text, "CONFIG_LV_CACHE_DEF_SIZE"), b->id);
+    TEST_ASSERT_NULL_MESSAGE(strstr(text, "CONFIG_LV_IMAGE_HEADER_CACHE_DEF_CNT"), b->id);
     free(text);
   }
 }
@@ -630,6 +635,14 @@ static void test_shared_defaults(void) {
   TEST_ASSERT_TRUE(has_line(text, "# CONFIG_GADGET_TEST_KEYS is not set"));
   TEST_ASSERT_TRUE(has_line(text, "# CONFIG_GADGET_NVS_ENCRYPT is not set"));
   TEST_ASSERT_NULL(strstr(text, "CONFIG_GADGET_TEST_KEYS=y"));
+  /* LVGL from Kconfig only (firmware/ui/lv_conf.h is the simulator's) and
+   * both image caches off, as P2b's ui_lv_requirements.h demands. They equal
+   * LVGL's Kconfig defaults; pinning them here makes this test, not the first
+   * idf.py build, the first check. */
+  TEST_ASSERT_TRUE(has_line(text, "CONFIG_LV_CONF_SKIP=y"));
+  TEST_ASSERT_NULL(strstr(text, "# CONFIG_LV_CONF_SKIP is not set"));
+  TEST_ASSERT_TRUE(has_line(text, "CONFIG_LV_CACHE_DEF_SIZE=0"));
+  TEST_ASSERT_TRUE(has_line(text, "CONFIG_LV_IMAGE_HEADER_CACHE_DEF_CNT=0"));
   free(text);
 }
 
@@ -703,8 +716,10 @@ CONFIG_MBEDTLS_ECP_DP_SECP256R1_ENABLED=y
 # esp_websocket_client: sends do not wait behind receives
 CONFIG_ESP_WS_CLIENT_SEPARATE_TX_LOCK=y
 
-# LVGL 9.6 on the device (the simulator uses firmware/ui/lv_conf.h;
-# firmware/ui/ui_lv_requirements.h checks both)
+# LVGL 9.6 on the device, from Kconfig only: firmware/ui/lv_conf.h is the
+# simulator's and is on the ui include path, so it must never be read here.
+# firmware/ui/ui_lv_requirements.h checks both builds.
+CONFIG_LV_CONF_SKIP=y
 CONFIG_LV_COLOR_FORMAT_RGB565=y
 CONFIG_LV_OS_NONE=y
 CONFIG_LV_USE_CLIB_MALLOC=y
@@ -715,6 +730,11 @@ CONFIG_LV_DRAW_SW_SUPPORT_A8=y
 CONFIG_LV_DRAW_SW_COMPLEX=y
 CONFIG_LV_USE_ANIMIMG=y
 CONFIG_LV_FONT_MONTSERRAT_14=y
+# Image caches off: the Image screen reuses two lv_image_dsc_t slots and both
+# caches are keyed by that address (ui_lv_requirements.h #errors otherwise).
+# 0 is LVGL's Kconfig default; pinned so host-tests can check it.
+CONFIG_LV_CACHE_DEF_SIZE=0
+CONFIG_LV_IMAGE_HEADER_CACHE_DEF_CNT=0
 # CONFIG_LV_BUILD_EXAMPLES is not set
 # CONFIG_LV_BUILD_DEMOS is not set
 
@@ -812,34 +832,27 @@ Expected: every command prints at least one line. If only the `CONFIG_GADGET_TES
 
 If any other grep prints nothing, stop and report it as a gap in P2a's or P2b's ESP branch; do not invent the missing mechanism (in particular, the macro `maus_art.c` uses to know which art profile is linked belongs to P2b).
 
-- [ ] **Step 6b: Let ESP-IDF's early expansion read `firmware/ui/CMakeLists.txt`**
+- [ ] **Step 6b: Check P2b's early-expansion guard in `firmware/ui/CMakeLists.txt` (contract §2.17)**
 
-ESP-IDF v6.0.3 first reads every component's `CMakeLists.txt` in CMake script mode (`cmake -P tools/cmake/scripts/component_get_requirements.cmake`, with `ESP_PLATFORM=1` and `CMAKE_BUILD_EARLY_EXPANSION=1`) to collect its requirements. That script loads the build and component properties but never `sdkconfig.cmake`. P2b's file stops there twice: its top-level `file(GLOB UI_FONT_SRCS CONFIGURE_DEPENDS ...)` is an error in script mode (`CONFIGURE_DEPENDS is invalid for script and find package modes`), and inside the ESP branch `CONFIG_GADGET_ART_PROFILE` is empty, so its `message(FATAL_ERROR "CONFIG_GADGET_ART_PROFILE must be s240 or s150, not ''")` fires. core's file is fine (its ESP branch registers before reading any `CONFIG_*`), and so is this plan's `main/CMakeLists.txt`. The fix is a guard at the top of the ui file that reports the requirements and returns. It sits outside the ESP branch, so it is a contract deviation (contract §2.17 lets P2c edit only the ESP branches; see Contract deviations, item 2); it changes nothing in a desktop build (`ESP_PLATFORM` is unset there) or in IDF's real configure pass (`CMAKE_BUILD_EARLY_EXPANSION` is unset there).
-
-Insert the guard directly after the header comments, before `set(UI_SRCS` (the command does nothing when the guard is already there):
+ESP-IDF v6.0.3 first reads every component's `CMakeLists.txt` in CMake script mode (`cmake -P tools/cmake/scripts/component_get_requirements.cmake`, with `ESP_PLATFORM=1` and `CMAKE_BUILD_EARLY_EXPANSION=1`) to collect its requirements. That script loads the build and component properties but never `sdkconfig.cmake`, and in script mode the ui file's top-level `file(GLOB UI_FONT_SRCS CONFIGURE_DEPENDS ...)` is an error (`CONFIGURE_DEPENDS is invalid for script and find package modes`), so without a guard the first `idf.py` run stops there. Contract §2.17 settles who fixes it: `firmware/ui/CMakeLists.txt` opens with P2b's early-expansion guard (`if(ESP_PLATFORM AND CMAKE_BUILD_EARLY_EXPANSION)` → `idf_component_register(INCLUDE_DIRS . art fonts REQUIRES lvgl__lvgl core)` → `return()` → `endif()`), which reports the ui component's requirements and returns before that glob, and P2b owns it. P2b's ESP-branch art-profile check also skips early expansion, where `CONFIG_GADGET_ART_PROFILE` is still empty. The guard changes nothing in a desktop build (`ESP_PLATFORM` is unset there) or in IDF's real configure pass (`CMAKE_BUILD_EARLY_EXPANSION` is unset there). core's file needs no guard (its ESP branch registers before reading any `CONFIG_*`), and neither does this plan's `main/CMakeLists.txt`. This step only checks the guard; it never adds or edits it.
 
 ```bash
-grep -q 'CMAKE_BUILD_EARLY_EXPANSION' firmware/ui/CMakeLists.txt || perl -0pi -e 's/^(set\(UI_SRCS\b)/# ESP-IDF early expansion runs this file in script mode: no sdkconfig values and no\n# file(GLOB CONFIGURE_DEPENDS). Report the requirements only.\nif(ESP_PLATFORM AND CMAKE_BUILD_EARLY_EXPANSION)\n  idf_component_register(INCLUDE_DIRS . art fonts REQUIRES lvgl__lvgl core)\n  return()\nendif()\n$1/m' firmware/ui/CMakeLists.txt
-sed -n '1,11p' firmware/ui/CMakeLists.txt
+grep -nxF -e 'if(ESP_PLATFORM AND CMAKE_BUILD_EARLY_EXPANSION)' \
+  -e '  idf_component_register(INCLUDE_DIRS . art fonts REQUIRES lvgl__lvgl core)' \
+  -e '  return()' \
+  -e 'set(UI_SRCS' firmware/ui/CMakeLists.txt
 ```
 
-Expected:
+Expected (the line numbers are those of P2b's file as P2b's plan writes it; a change to its header comment shifts them, which is fine):
 
-```cmake
-# SPDX-License-Identifier: Apache-2.0
-# firmware/ui: LVGL screens, the Maus animation, generated art and fonts.
-# Dual-use like core: an ESP-IDF component (built by P2c's project) or a
-# desktop static library (GADGET_WITH_LVGL builds).
-# ESP-IDF early expansion runs this file in script mode: no sdkconfig values and no
-# file(GLOB CONFIGURE_DEPENDS). Report the requirements only.
-if(ESP_PLATFORM AND CMAKE_BUILD_EARLY_EXPANSION)
-  idf_component_register(INCLUDE_DIRS . art fonts REQUIRES lvgl__lvgl core)
-  return()
-endif()
-set(UI_SRCS
+```
+7:if(ESP_PLATFORM AND CMAKE_BUILD_EARLY_EXPANSION)
+8:  idf_component_register(INCLUDE_DIRS . art fonts REQUIRES lvgl__lvgl core)
+9:  return()
+11:set(UI_SRCS
 ```
 
-Step 8 proves it with a real `idf.py reconfigure`. Tell P2b about this edit in the hand-off (Contract notes, Seams).
+The first three lines must be present, consecutive and above `set(UI_SRCS`. If only `set(UI_SRCS` prints, or the guard lines are split up or come after it, stop and report it to P2b as a missing early-expansion guard (contract §2.17). Do not add or change the guard here: outside its `if(ESP_PLATFORM)` branches the file is P2b's, and Task 16 Step 5 fails on any edit to it. Step 8 proves the guard with a real `idf.py reconfigure`.
 
 - [ ] **Step 7: Write the ESP-IDF project**
 
@@ -853,7 +866,7 @@ Step 8 proves it with a real `idf.py reconfigure`. Tell P2b about this edit in t
 # Optional, each in its own build directory: -D PROJECT_VER=<version>
 # (release CI), -D GADGET_NVS_ENCRYPT=1 (opt-in NVS encryption, burns an eFuse
 # on first boot: sdkconfig.nvs-encrypt), -D GADGET_TEST_KEYS=1 (bench OTA
-# tests against the fake host only, never published: sdkconfig.test-keys).
+# tests only, never published: sdkconfig.test-keys).
 cmake_minimum_required(VERSION 3.22)
 
 if(NOT DEFINED GADGET_BOARD OR "${GADGET_BOARD}" STREQUAL "")
@@ -920,7 +933,8 @@ CONFIG_NVS_SEC_HMAC_EFUSE_KEY_ID=5
 
 ```text
 # SPDX-License-Identifier: Apache-2.0
-# Bench OTA tests against tools/fake-host only (docs/hardware-checklist.md).
+# Bench OTA tests only (docs/hardware-checklist.md): tools/fake-host, or
+# MausBot's Update button against a local, never-published dev release.
 # Applied only with -D GADGET_TEST_KEYS=1, in its own build directory. Such an
 # image trusts the test key t1, whose private half is committed in keys/:
 # never publish it and never leave it on a gadget you use. Release CI rejects
@@ -1377,7 +1391,7 @@ idf.py -B build/amoled-175c -D GADGET_BOARD=amoled-175c -D SDKCONFIG=build/amole
 cd ../../..
 ```
 
-Expected: the first run stops with `CMake Error ... GADGET_BOARD is not set.  Pass -D GADGET_BOARD=<board>, one of the directories in boards/.`, the second with `Unknown board 'nope': there is no directory boards/nope.`, the third with `Build test-key or NVS-encryption variants in their own -B directory, not build/lcd-154` (the failed configure still caches `GADGET_TEST_KEYS`, which is why the `rm -rf` removes `build/lcd-154`); those three print a non-zero `exit` status. The last run downloads the managed components and prints `exit 0`: ESP-IDF's early expansion read core, ui (Step 6b) and main without an error. If it stops with `CONFIGURE_DEPENDS is invalid for script and find package modes` or `CONFIG_GADGET_ART_PROFILE must be s240 or s150, not ''`, Step 6b's guard is missing from `firmware/ui/CMakeLists.txt`.
+Expected: the first run stops with `CMake Error ... GADGET_BOARD is not set.  Pass -D GADGET_BOARD=<board>, one of the directories in boards/.`, the second with `Unknown board 'nope': there is no directory boards/nope.`, the third with `Build test-key or NVS-encryption variants in their own -B directory, not build/lcd-154` (the failed configure still caches `GADGET_TEST_KEYS`, which is why the `rm -rf` removes `build/lcd-154`); those three print a non-zero `exit` status. The last run downloads the managed components and prints `exit 0`: ESP-IDF's early expansion read core, ui (through P2b's guard, checked in Step 6b) and main without an error. If it stops with `CONFIGURE_DEPENDS is invalid for script and find package modes` or `CONFIG_GADGET_ART_PROFILE must be s240 or s150, not ''`, P2b's early-expansion guard in `firmware/ui/CMakeLists.txt` is missing or changed: stop and report it to P2b (contract §2.17); do not edit that file.
 
 - [ ] **Step 9: Build all four boards**
 
@@ -1388,7 +1402,7 @@ Run:
 SKIP_ART_CHECK=1 firmware/ports/esp32/tools/build-all.sh
 ```
 
-Expected, for each of `amoled-175`, `amoled-175c`, `devkit`, `lcd-154` (alphabetical): `== <board>` followed by `check-size: <board> ok, <n> of 6291456 bytes (<p>%)`; exit status 0. The first build downloads the managed components into `firmware/ports/esp32/managed_components/` (gitignored) and compiles core and ui for the device for the first time. If core or ui fail to compile, follow "If core or ui sources fail" above.
+Expected, for each of `amoled-175`, `amoled-175c`, `devkit`, `lcd-154` (alphabetical): `== <board>` followed by `check-size: <board> ok, <n> of 6291456 bytes (<p>%)`; exit status 0. The first build downloads the managed components into `firmware/ports/esp32/managed_components/` (gitignored) and compiles core and ui for the device for the first time. If core or ui fail to compile, follow "If core or ui sources fail" above. One exception is ours, not P2b's: if the ui build stops with `LVGL config: LV_CACHE_DEF_SIZE and LV_IMAGE_HEADER_CACHE_DEF_CNT must be 0 (image caches off)`, the generated `build/<board>/sdkconfig` does not carry Step 3's LVGL pins (Step 4's host test proves the defaults files do; an existing sdkconfig wins over them), so it is stale or was changed with `menuconfig`: delete `build/<board>` and run the build again.
 
 Then check that a stale sdkconfig from another board is refused, both as a copied file and as board A's own build directory reused for board B (Review Focus 1), and put `build/amoled-175c` back:
 
@@ -1429,8 +1443,7 @@ git add firmware/ports/esp32/CMakeLists.txt \
   firmware/ports/esp32/main \
   firmware/ports/esp32/boards \
   firmware/ports/esp32/tools/build-all.sh \
-  firmware/ports/esp32/host-tests \
-  firmware/ui/CMakeLists.txt
+  firmware/ports/esp32/host-tests
 git commit -m "feat(esp32): ESP-IDF v6.0.3 project, board defaults and pin maps for four boards"
 ```
 If Step 6 changed `firmware/core/CMakeLists.txt`, add it to the same commit.
@@ -7983,6 +7996,9 @@ idf.py -B build/ota-b -D GADGET_BOARD=<board> -D SDKCONFIG=build/ota-b/sdkconfig
 idf.py -B build/ota-a -D GADGET_BOARD=<board> -D SDKCONFIG=build/ota-a/sdkconfig -D GADGET_TEST_KEYS=1 -D PROJECT_VER=1.0.0-dev -p /dev/cu.usbmodem* flash monitor
 ```
 
+For the MausBot Update-button path, use the same variant directories with
+non-dev versions (1.0.0/1.0.1); never publish them.
+
 Pair image A with the fake host, then:
 
 | # | Check | How | Expected |
@@ -8078,7 +8094,7 @@ cmake -S firmware -B build/host -DCMAKE_BUILD_TYPE=Debug && cmake --build build/
 (cd tools/art && npm ci && npm run budget)
 ```
 
-Expected: P1's protocol and fake-host tests pass; the desktop build passes all `unit`, `vectors`, `e2e` and `snapshot` tests (this plan does not touch them; the only shared files it may have edited are the `if(ESP_PLATFORM)` branch of `firmware/core/CMakeLists.txt` and the early-expansion guard at the top of `firmware/ui/CMakeLists.txt`, which is inert in a desktop build because `ESP_PLATFORM` is unset there); the art budget check passes.
+Expected: P1's protocol and fake-host tests pass; the desktop build passes all `unit`, `vectors`, `e2e` and `snapshot` tests (this plan does not touch them; the only shared file it may have edited is the `if(ESP_PLATFORM)` branch of `firmware/core/CMakeLists.txt`, which is inert in a desktop build because `ESP_PLATFORM` is unset there); the art budget check passes.
 
 - [ ] **Step 5: Hygiene**
 
@@ -8087,11 +8103,11 @@ git diff --check p2b-ui...HEAD && echo "no whitespace errors"
 git diff --name-only p2b-ui...HEAD -- firmware/ports/esp32 docs/hardware-checklist.md | grep -v 'dependencies.lock' | xargs grep -L 'SPDX-License-Identifier' ; echo "spdx check done"
 git grep -n 'github.com' -- firmware/ports/esp32 docs/hardware-checklist.md ':!firmware/ports/esp32/host-tests/CMakeLists.txt' ; echo "no third-party project links above"
 git grep -n -E 'TBD|TODO|FIXME' -- firmware/ports/esp32 docs/hardware-checklist.md ; echo "no placeholders above"
-git diff --name-only p2b-ui...HEAD | grep -v -E '^(firmware/ports/esp32/|docs/hardware-checklist.md|\.github/workflows/ci.yml|firmware/core/CMakeLists.txt|firmware/ui/CMakeLists.txt)' ; echo "no files outside this plan's scope above"
+git diff --name-only p2b-ui...HEAD | grep -v -E '^(firmware/ports/esp32/|docs/hardware-checklist.md|\.github/workflows/ci.yml|firmware/core/CMakeLists.txt)' ; echo "no files outside this plan's scope above"
 git status --short
 ```
 
-Expected: `no whitespace errors`; nothing printed before `spdx check done` (`docs/hardware-checklist.md` starts with its `<!-- SPDX-License-Identifier: Apache-2.0 -->` line), `no third-party project links above` (the pinned Unity tarball URL in `host-tests/CMakeLists.txt` is a dependency pin, not a project link, so that file is excluded), `no placeholders above` and `no files outside this plan's scope above`; `git status --short` prints nothing.
+Expected: `no whitespace errors`; nothing printed before `spdx check done` (`docs/hardware-checklist.md` starts with its `<!-- SPDX-License-Identifier: Apache-2.0 -->` line), `no third-party project links above` (the pinned Unity tarball URL in `host-tests/CMakeLists.txt` is a dependency pin, not a project link, so that file is excluded), `no placeholders above` and `no files outside this plan's scope above` (`firmware/ui/CMakeLists.txt` is not on the allowed list: its early-expansion guard is P2b's, contract §2.17, so any edit to it shows up here); `git status --short` prints nothing.
 
 - [ ] **Step 6: Hand off**
 
@@ -8105,7 +8121,7 @@ Do not push, open a PR or create a release. Report to Omkar: the branch name `p2
 - Battery numbers: the AXP2101 fuel gauge and charging bit, the lcd-154 voltage curve, its no-cell reading, CHG_STAT polarity and the BAT_EN latch on battery (B5–B8a).
 - Wi-Fi behaviour against a real access point: the wrong-password path, scanning while retrying, automatic recovery after a router restart (checks 7–8); mDNS discovery of a real MausBot, including from Windows hosts (check 12).
 - The USB-Serial-JTAG console as an input device, `log off`, and the 8 KiB line limit (checks 4–6, 9–10); reflashing without losing NVS, with `idf.py` and with the browser installer (checks 19, 21).
-- The full ESP-IDF configure and build itself: the early-expansion guard of Task 2 Step 6b was checked only against a script-mode simulation of v6.0.3's `component_get_requirements.cmake`, and nothing here ran `idf.py` (Task 2 Steps 8–9 and the `esp32` CI job are the first real runs).
+- The full ESP-IDF configure and build itself: P2b's early-expansion guard (checked by Task 2 Step 6b) was run only against a script-mode simulation of v6.0.3's `component_get_requirements.cmake`, and nothing here ran `idf.py` (Task 2 Steps 8–9 and the `esp32` CI job are the first real runs).
 - OTA on flash: write speed with code executing from PSRAM, `esp_ota_end` image verification, rollback after power loss and after the 5-minute probation (O1–O7).
 - That HMAC NVS encryption really burns eFuse key block 5 and keeps the pairing (optional section; permanent).
 - Runtime limits: internal DMA memory for the two LVGL buffers (2 × 37,280 bytes on the AMOLED boards), the gadget task's 16 KiB stack, frame rate of the round 466×466 screen.
@@ -8118,7 +8134,7 @@ Do not push, open a PR or create a release. Report to Omkar: the branch name `p2
 |---|---|
 | §2, §5.1, A14: ESP-IDF v6.0.3, buildable on v5.5.5, manifest `>=6.0.3,<6.1`, optional relaxed v5.5.5 CI leg | Task 2 (manifest, install), Task 14 (`esp32-idf55`) |
 | §5.1: build command, one sdkconfig per board, `SDKCONFIG_DEFAULTS` order, failure on unset/unknown board, `PROJECT_VER` = `0.0.0-dev` by default | Task 2 (project file, guard checks Steps 8–9), Task 16 Step 3 (release-style `PROJECT_VER`) |
-| §5.1, A14: LVGL 9.6.0 configured with `CONFIG_LV_*`; fonts via styles (P2b); no Waveshare BSP, no `esp_lvgl_port` | Task 2 (defaults, manifest), Task 10 (own single-threaded glue) |
+| §5.1, A14: LVGL 9.6.0 configured with `CONFIG_LV_*`; fonts via styles (P2b); no Waveshare BSP, no `esp_lvgl_port` | Task 2 (defaults, manifest; `CONFIG_LV_CONF_SKIP=y` and both image caches off pinned and asserted by `test_shared_defaults`), Task 10 (own single-threaded glue) |
 | §5.1: own driver glue on `esp_lcd_co5300`, `esp_lcd_touch_cst9217`, `esp_codec_dev`, IDF ST7789, `i2s_std`, `i2c_master` | Tasks 8, 9, 10, 12 |
 | §5.1: `esp_websocket_client` with `buffer_size` 16 KiB + 64 and no auto-reconnect; `mdns ^1.14.0` | Task 6, Task 7 |
 | §5.1: cJSON only from `espressif/cjson` | Task 2 (manifest; core's ESP branch check in Step 6) |
@@ -8143,10 +8159,10 @@ Do not push, open a PR or create a release. Report to Omkar: the branch name `p2
 | §5.6, A22: USB-Serial-JTAG console, CR/LF/CRLF, `log off/on` never hides `@omb` lines | Task 3 (`console_usj.c`, `hal_system.c`), Task 15 (checks 4–10) |
 | §4.2, A16: key in NVS namespace `gadget`; opt-in `GADGET_NVS_ENCRYPT` with HMAC eFuse block 5 and a warning; key generated after Wi-Fi starts | Task 4, Task 2 (Kconfig help, overlay), Task 13 (Wi-Fi started before `core_init()`) |
 | §4.8, A19: OTA into the inactive slot, firmware-run probation, rollback on any early reboot, anti-rollback never | Task 11, Task 2 (rollback lines), Task 1 (`check-size.sh` checks them) |
-| §8, A37: test key off in every board build; bench-only test-key builds are explicit, live in their own build directory and carry `-dev` versions so they never look official | Task 2 (defaults + test, the project's variant-directory guard, `build-all.sh`'s sdkconfig check), Task 11 (variant check), Task 15 (bench images `1.0.0-dev`/`1.0.1-dev`) |
+| §8, A37: test key off in every board build; bench-only test-key builds are explicit, live in their own build directory and are never published; the fake-host images carry `-dev` versions so they never look official, and the MausBot Update-button images use non-dev versions in the same variant directories | Task 2 (defaults + test, the project's variant-directory guard, `build-all.sh`'s sdkconfig check), Task 11 (variant check), Task 15 (fake-host bench images `1.0.0-dev`/`1.0.1-dev`; Update-button images `1.0.0`/`1.0.1` in `build/ota-a`/`build/ota-b`) |
 | §10 "Firmware builds": all four boards in one checkout, each with its own sdkconfig, app ≤ slot, optional v5.5.5 job | Task 14 Step 2: the `esp32` job's amoled-175c/plain leg runs `tools/build-all.sh` (amoled-175, amoled-175c, devkit, lcd-154 one after another in one checkout, each with its own sdkconfig and lock file, `check-size.sh` and `check-art-profile.sh` per board); the other legs build one board each; `esp32-idf55`. Locally: `build-all.sh` in Tasks 2–13 and Task 16 Step 3 |
 | §10 "Hardware": manual checklist per board, including installer reflash keeping the pairing; P2a's and P2b's device checks | Task 15 (checks 1–28, B1–B14, B8a, O1–O7; links `docs/installer-checklist.md` and `firmware/ui/README.md`) |
-| Contract §2.17: project file, shared defaults, Kconfig symbols, `main.c` order, `board_api.h`, `check-size.sh`, devkit USB port | Tasks 1, 2, 3, 13, 15 |
+| Contract §2.17: project file, shared defaults, Kconfig symbols, `main.c` order, `board_api.h`, `check-size.sh`, devkit USB port; P2b's early-expansion guard at the top of `firmware/ui/CMakeLists.txt` (checked, never edited) | Tasks 1, 2 (guard: Step 6b, Step 8), 3, 13, 15; Task 16 Step 5 (no edit to the ui file) |
 | Contract §1.6: CI job ids `esp32`, `esp32-idf55`; `esp32` keeps the board matrix | Task 14 |
 | Contract §1.4: every drift check over generated files ends with `test -z "$(git status --porcelain -- <path>)"` | Task 14 (lock check), Task 16 Step 3 |
 
@@ -8167,17 +8183,17 @@ Not in this plan (owners named in Scope): core behaviour (P2a), screens, art and
 **Contract deviations** (each keeps the pinned shape and needs review, contract §0 item 2):
 
 1. **`hal_spk_stop()` on the devkit** (contract §2.5: "Drop everything queued and go silent now"). The MAX98357A has no mute register and no control bus, so after a stop up to the devkit's `spk_latency_ms` (60 ms: 6 DMA descriptors × 240 frames at 24 kHz) still plays out of the I2S DMA ring; on barge-in that tail can reach the start of the new recording. The codec boards meet the pinned behaviour through the codec mute. Proposed change: none to the API; one of: accept "within 60 ms" for boards without a codec mute in the contract's comment; shrink the devkit's DMA ring (for example 4 × 120 frames = 20 ms) at the cost of more underrun risk; or wire the amplifier's SD (shutdown) pin to a free GPIO in the devkit wiring and give the devkit an `spk_set_mute` that drives it. Review needed.
-2. **`firmware/ui/CMakeLists.txt` outside its ESP branch** (contract §2.17 lets P2c correct only the `if(ESP_PLATFORM)` branches). ESP-IDF v6.0.3's early expansion runs every component file in script mode without `sdkconfig.cmake`; P2b's top-level `file(GLOB ... CONFIGURE_DEPENDS ...)` is an error there and its ESP branch's `CONFIG_GADGET_ART_PROFILE` check fails on the empty value, so the first `idf.py build` cannot pass. Task 2 Step 6b adds a six-line guard before `set(UI_SRCS` (`if(ESP_PLATFORM AND CMAKE_BUILD_EARLY_EXPANSION)` → `idf_component_register(INCLUDE_DIRS . art fonts REQUIRES lvgl__lvgl core)` → `return()`), which is inert for the desktop build. Proposed change: contract §2.17 also allows this guard (or P2b adds it to its file). Review needed; P2b is told in the hand-off.
+2. **Closed: `firmware/ui/CMakeLists.txt` outside its ESP branch.** An earlier draft had Task 2 Step 6b add the ESP-IDF early-expansion guard to P2b's file, outside the `if(ESP_PLATFORM)` branches that contract §2.17 lets P2c correct. P2b's file now opens with that exact guard, and contract §2.17 names P2b its owner (`firmware/ui/CMakeLists.txt` opens with P2b's early-expansion guard, `if(ESP_PLATFORM AND CMAKE_BUILD_EARLY_EXPANSION) idf_component_register(INCLUDE_DIRS . art fonts REQUIRES lvgl__lvgl core) return() endif()`). This plan no longer edits the file: Step 6b only checks that the guard is there and stops if it is not, and Task 16 Step 5 fails on any edit to it. Nothing left to review.
 
 **Seams to confirm with other plans** (each is checked by a step here, none is guessed):
 
-- **P2b** — `firmware/ui/CMakeLists.txt`'s ESP branch compiles only `art/${CONFIG_GADGET_ART_PROFILE}` and `maus_art_for()` returns NULL for the other profile (contract §2.15). Task 2 Step 6 greps for it and stops if it is missing; Task 13's `check-art-profile.sh` proves the image links one profile. Task 2 Step 6b adds the early-expansion guard at the top of the same file (Contract deviation 2); P2b should keep it (or own it) in later edits. `docs/hardware-checklist.md` links `firmware/ui/README.md`'s "Checks that need hardware" (row 28), as P2b's hand-off asks.
+- **P2b** — `firmware/ui/CMakeLists.txt`'s ESP branch compiles only `art/${CONFIG_GADGET_ART_PROFILE}` and `maus_art_for()` returns NULL for the other profile (contract §2.15). Task 2 Step 6 greps for it and stops if it is missing; Task 13's `check-art-profile.sh` proves the image links one profile. The same file opens with P2b's early-expansion guard, which contract §2.17 makes P2b's to keep in every later edit; Task 2 Step 6b greps for it and stops if it is missing (Contract deviation 2 is closed). `docs/hardware-checklist.md` links `firmware/ui/README.md`'s "Checks that need hardware" (row 28), as P2b's hand-off asks. P2b's hand-off also asks to keep `CONFIG_LV_CONF_SKIP=y` and both LVGL image caches off (`ui_lv_requirements.h` `#error`s unless `LV_CACHE_DEF_SIZE` and `LV_IMAGE_HEADER_CACHE_DEF_CNT` are 0): Task 2 Step 3 writes all three lines into the shared `sdkconfig.defaults` instead of relying on Kconfig defaults, `test_shared_defaults` asserts them and `test_each_board_defaults_match_the_table` fails if a board file (which wins over the shared one) touches them, so the host tests catch a missing pin before the first `idf.py build`.
 - **P2a** — `firmware/core/CMakeLists.txt`'s ESP branch has `REQUIRES espressif__cjson mbedtls`, both key-table files and the `CONFIG_GADGET_TEST_KEYS` block (contract §2.17). Task 2 Step 6 inserts only that block if it is missing. Core must not call `hal_ws_open()` again before it has seen the previous `GADGET_EV_WS_CLOSED`. The device checks P2a hands to this checklist (60 s countdown, swipe-down, jitter buffer, mouth level) are rows 22–25.
 - **P2d** — AGENTS.md's "add a board" is correct with its three files (`board.h`, `board.c`, `sdkconfig.defaults`); it may mention the optional `board.cmake` as a way to compile only that board's drivers. It should link `docs/hardware-checklist.md`, which in turn links `docs/installer-checklist.md` (row 21 repeats its reinstall check). `release.yml` can reuse `tools/check-size.sh <board> <dir>` and `tools/check-art-profile.sh <board> <dir>` and must never pass `-D GADGET_TEST_KEYS=1` or `-D GADGET_NVS_ENCRYPT=1`. AGENTS.md's ESP-IDF install should include EIM's macOS prerequisites (addition 7).
 
 ## Self-review
 
 - **Spec coverage:** every row of spec §5.3 and the ESP32 sides of §4.2, §4.8, §5.1, §5.2, §5.4, §5.6 and §10 maps to a task in the table above; items owned elsewhere are named in Scope.
-- **Placeholder scan:** every code step carries complete file contents; every command has its expected output; the two conditional instructions (the IDF-6 warning workaround for a managed component, the core ESP-branch insertion) and the one unconditional edit to another plan's file (Task 2 Step 6b) give the exact lines to add.
+- **Placeholder scan:** every code step carries complete file contents; every command has its expected output; the two conditional instructions (the IDF-6 warning workaround for a managed component, the core ESP-branch insertion) give the exact lines to add. The plan makes no unconditional edit to another plan's file: Task 2 Step 6b only checks P2b's early-expansion guard.
 - **Type and name consistency:** `pl_*` signatures in Interfaces match the headers in the code blocks (including `pl_mdns_ptr_ms`, `pl_mdns_a_ms`, `pl_lipo_present`); `board_api.h` (with `spk_set_mute`) is used unchanged by all four `board.c` files and by `drv_es_codec`/`drv_i2s_simplex`; `drv_co5300_cfg_t.init_cmds` is filled from `BOARD_CO5300_INIT_CMDS` by both AMOLED `board.c` files; the HAL functions are exactly those of contract §2.5 (checked by a script while writing this plan and again in Task 13 Step 5); `port.h` declares every `port_*` function the tasks define.
 - **Review Focus:** each of the five lines has its test in the owning task (Task 2 Steps 8–9 and the CI leg of Task 14, Task 5, Task 6, Task 9, Task 11).

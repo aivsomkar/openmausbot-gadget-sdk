@@ -87,7 +87,7 @@
 | §6.2 `voice.end` row and contract §3.14: WAV → `/api/stt`; 409 → set-up copy; 502 forbidden key → the harness's message | 10 |
 | §6.2 Speech items 1–8: raw text to prepare (A29), one PCM request per utterance, the first playing while the rest synthesize, one stream per reply, the bot's voice, 16000/24000 only, pushes queued after reply speech (plus a 300 ms gap for the gadget's buffer), `speak.stop` on stop or a new turn, first 409 → one notice card and speech off, 415 → text only | 11 |
 | Contract §3.12 hub wiring (`voice: createGadgetVoice`) and the whole chain: voice.begin/frames/end → `/api/stt` → `heard` → message → final reply → speech. Barge-in three ways, each with `speak.stop` and the old turn's `done` before the new turn's first message: `say` mid-turn, TALK (`stop` then `voice.begin`) mid-turn, and TALK after `done` while speech still plays (§6.2 Speech item 6). Text-only for no speaker or a 22.05 kHz speaker (Speech item 4); a spoken push without `turn` (item 5); Voice is off once per session (item 7) | 12 |
-| §10 Harness row (STT and TTS) and Companion row (barge-in `speak.stop`, through Task 12's three barge-in cases); whole-branch checks against a baseline; what needs hardware | 13 |
+| §10 Harness row (STT and TTS) and Companion row (barge-in `speak.stop`, through Task 12's three barge-in cases); whole-branch checks against a baseline; what needs hardware; §10 "End to end" for a spoken turn: the exact manual run of the simulator's `--mic-file` against an OMB2 build (Step 6 item 6). Talk, approval, push and stop with a fake engine are P4a's `server/gadget-hub.sim.e2e.test.ts` | 13 |
 
 **Out of scope, owned by another plan:**
 - **P3a** (`feat/gadget-hub`) owns `session.ts` and its §6.2 mapping:
@@ -4873,7 +4873,7 @@ Decisions to report:
 - D-P3b-2: whether Task 1 started from `origin/main`, and that Task 9 Step 1 rebased the branch onto `feat/gadget-hub`.
 
 Not verifiable without hardware or a packaged build. These belong on the packaged-build and hardware checklists:
-1. **Speech permission in the packaged app.** Does the Speech grant for dictation apply when the packaged harness (a utilityProcess) launches the helper through `open`? Check on an OMB2 side-by-side build (the `test-locally` skill): grant dictation once, then run a gadget turn. Expect `provider: "apple"`. The fallback is built in: `speech-not-authorized`, then Scribe or the set-up copy.
+1. **Speech permission in the packaged app.** Does the Speech grant for dictation apply when the packaged harness (a utilityProcess) launches the helper through `open`? Check on an OMB2 side-by-side build (the `test-locally` skill): grant dictation once, then run a gadget turn (item 6 has the exact run). Expect `provider: "apple"`. The fallback is built in: `speech-not-authorized`, then Scribe or the set-up copy.
 2. **The recognizer on a silent WAV, on a Mac that has granted Speech Recognition.** The route's silence gate already answers `{text: ""}` for near-silence. Check that a quiet-but-not-silent clip returns `no-speech` (mapped to `""`) and not `recognition-error`.
 3. **Real ElevenLabs Scribe v2 with a real key.** With the request as D-P3b-1 left it: is `enable_logging=false` refused for a non-enterprise account, and with what status and body? With answer A, does the body name retention or logging, so the one retry runs, and does it succeed? Does a key without the Speech to Text permission get a 401 or 403 whose body does not name retention?
 4. **Live TTS answers.** Fish (`format: "wav"`, 16/24 kHz) and xAI (`codec: "wav"`, 16/24 kHz) really return 16-bit PCM WAV. ElevenLabs `pcm_16000` and `pcm_24000` play at the right pitch.
@@ -4886,7 +4886,96 @@ Not verifiable without hardware or a packaged build. These belong on the package
    - the silence gate: on each board, normal speech at arm's length must peak well above 200 (about -44 dBFS) in the WAV that reaches `/api/stt`, and a whispered question must still come back as text, not "Didn't catch that". If a board's mic gain cannot clear it, lower `SILENCE_PEAK` in `server/routes/stt.ts` or drop the amplitude check and keep only the 100 ms floor;
    - the Voice is off card appears once;
    - a full 60 s utterance completes.
-6. **End to end, simulator ↔ dev MausBot:** a voice turn with the simulator's `--mic-file` WAV, as in spec §10 "End to end".
+6. **End to end, simulator ↔ OMB2: one spoken turn (spec §10 "End to end").** P4a's opt-in `server/gadget-hub.sim.e2e.test.ts` (P4a Task 12 Step 1b, run in P4a Task 13 Step 4) covers talk, approval, push and stop against a real harness with a fake engine, but its talk step is a typed `say`. This item is the only run that goes through the gadget's mic, `/api/stt`, a real engine and PCM speech, and it needs the packaged app. It uses a fresh data folder seeded with the system voice and a fresh companion folder, so `~/.openmausbot` is never touched. Ask Omkar before changing OpenMausBot itself: both companions listen on :8810, so its Remote access must be off (or the app quit) while OMB2's is on.
+
+   Run every block below in one terminal, because later blocks use the earlier blocks' variables. First, find the branch and the newest SDK branch that has the simulator:
+
+   ```bash
+   export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
+   WT="$(git -C /Users/omkar/Desktop/openmaus/OpenGrokBot worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} $0=="branch refs/heads/feat/gadget-voice"{print w}')"
+   echo "app from: ${WT:-no worktree}"
+   SDK=/Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk
+   SIMBRANCH=""
+   for b in p2d-installer p2c-esp32 p2b-ui p2a-core; do
+     git -C "$SDK" cat-file -e "$b:firmware/ports/sim/main.c" 2>/dev/null && { SIMBRANCH=$b; break; }
+   done
+   echo "simulator from: ${SIMBRANCH:-none yet}"
+   ```
+
+   If it prints `none yet`, P2a has not landed: this item stays open. If it prints `no worktree` (Step 5 removed it), run `git -C /Users/omkar/Desktop/openmaus/OpenGrokBot worktree add /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-voice feat/gadget-voice` and set `WT` to that path.
+
+   Next, build the headless simulator (from `git archive`, so the SDK checkout is never touched), make the fixture and the question WAV, and build this branch as OMB2. The build takes about 5–10 min and ends with `== installed`; an agent runs it with `nohup … &` as the `test-locally` skill says.
+
+   ```bash
+   E2E=$(mktemp -d /private/tmp/omb-p3b-e2e.XXXX)
+   mkdir -p "$E2E/sdk" "$E2E/data" "$E2E/companion"
+   git -C "$SDK" archive "$SIMBRANCH" | tar -x -C "$E2E/sdk"
+   cmake -S "$E2E/sdk/firmware" -B "$E2E/sdk/build" -DCMAKE_BUILD_TYPE=Debug -DGADGET_WITH_LVGL=OFF -DGADGET_BUILD_TESTS=OFF
+   cmake --build "$E2E/sdk/build" -j10 --target gadget-sim
+   SIM=$(find "$E2E/sdk/build" -type f -name gadget-sim -perm -u+x | head -1); "$SIM" --version
+   printf '{"tts":{"provider":"system","voice":"Samantha"}}' > "$E2E/data/config.json"
+   say -o "$E2E/ask.wav" --data-format=LEI16@16000 "What is the capital of France"
+   afinfo "$E2E/ask.wav" | grep 'Data format'
+   ~/.claude/skills/test-locally/build-side-by-side.sh "$WT"
+   ```
+
+   Expected:
+   - `[100%] Built target gadget-sim`, and the simulator's version;
+   - `Data format:     1 ch,  16000 Hz, Int16` (the simulator's mic takes only 16 kHz mono 16-bit PCM);
+   - `== installed`.
+
+   If "Samantha" is not installed, use the first name from `say -v '?'`.
+
+   Then start OMB2 on the fixture, by path and with `ELECTRON_RUN_AS_NODE` unset (`open` returns at once):
+
+   ```bash
+   lsof -nP -iTCP:8810 -sTCP:LISTEN
+   env -u ELECTRON_RUN_AS_NODE open -n /Applications/OMB2.app --env OMB_DATA_DIR="$E2E/data" --env OMB_COMPANION_DIR="$E2E/companion"
+   ```
+
+   `lsof` must print nothing before the launch: anything listening on :8810 is OpenMausBot's companion. In OMB2:
+   1. Finish the first-run screens.
+   2. Create one bot on an engine that is signed in, and send it "hi" in the window to see that it answers.
+   3. Open Settings → Remote access, turn Remote access on and click **Pair a gadget**.
+   4. Leave "Talks to" on that bot and keep the six digits on screen.
+
+   Then run one spoken turn. The script holds TALK for 2.5 s, longer than the 1.4 s WAV, so the mic replays the whole question followed by silence. It passes only when the turn ends `ok`, then waits 20 s so the reply's speech plays into `reply.wav`. With a real socket, the headless clock runs in real time.
+
+   ```bash
+   printf '%s\n' '# P3b: one spoken turn: gadget mic, /api/stt, the bot, PCM speech' \
+     'expect ready 30000' 'wait 1000' 'talk_down' 'wait 2500' 'talk_up' \
+     'expect heard 60000' 'expect done 180000' 'model reply.failed false 1000' 'wait 20000' > "$E2E/voice-turn.txt"
+   printf 'The six digits from Pair a gadget: '; read -r CODE
+   "$SIM" --board amoled-175c --state-dir "$E2E/sim" --headless --script "$E2E/voice-turn.txt" \
+     --host 127.0.0.1:8810 --pair "$CODE" \
+     --mic-file "$E2E/ask.wav" --speaker-file "$E2E/reply.wav" --trace 2> "$E2E/sim.log"; echo "sim exit=$?"
+   grep -E '"op":"(voice\.begin|voice\.end|heard|speak\.begin|speak\.end|speak\.stop|card|done)"' "$E2E/sim.log"
+   afinfo "$E2E/reply.wav" | grep -E 'Data format|estimated duration'
+   afplay "$E2E/reply.wav"
+   ```
+
+   Expected:
+   - `sim exit=0`.
+   - The `grep` prints `>> {"op":"voice.begin",…}` and `>> {"op":"voice.end",…}`, then the host's frames:
+     - `<< {"op":"heard",…}` whose `text` reads "What is the capital of France?" or close to it;
+     - `<< {"op":"speak.begin",…}` with `"rate":16000`, and one `<< {"op":"speak.end",…}` with the same `stream`;
+     - `<< {"op":"done",…}` with `"outcome":"ok"`.
+
+     `done` may come before or after the `speak.*` lines: P3a sends it after the final reply, and the speech follows on its own. There is no `card` line and no `speak.stop`.
+   - `afinfo` shows `1 ch,  16000 Hz, Int16` and a duration over 1 s, and `afplay` speaks the bot's reply in the seeded voice.
+   - In OMB2, the bot's thread shows the question as the user's message, and the reply.
+   - The fixture has no ElevenLabs key, so the `heard` frame came from Apple's recognizer through OMB2's packaged helper. Record this run as item 1's answer as well.
+
+   On failure, read `$E2E/sim.log`:
+   - No `heard`, and `done` with `"outcome":"failed"` and the reason `Speech-to-text isn't set up…`: OMB2's helper is not allowed Speech Recognition. Do item 1 (grant dictation once in OMB2) and run the turn again.
+   - `done` with the reason `Didn't catch that`: the recognizer got no words from the WAV. Check that `ask.wav` plays with `afplay` and that its format line matched.
+   - The script stops at `expect ready`: the six digits expired, or Remote access is off. Pair again with fresh digits and a new `--state-dir`.
+   - A `card` line titled `Voice is off`: the seeded voice did not take. Pick a system voice in OMB2's voice settings and run the turn again.
+
+   To run the turn again after a pairing succeeded, keep the same `--state-dir` and drop `--pair "$CODE"`: the simulator is already paired. Afterwards:
+   1. Quit OMB2 (⌘Q in its window).
+   2. Omkar turns OpenMausBot's Remote access back on.
+   3. Remove the fixture: `rm -rf "$E2E"`.
 
 ---
 
@@ -4930,6 +5019,7 @@ These are additive and need no review stop:
   - Every §6.3 bullet maps to a task in the Scope table: the route module, the allowlist, the input limits, the output, file mode (flags, URL request, on-device recognition, punctuation, one line, no prompt), helper resolution, the launch, empty and no-speech, Scribe (request, key, when it is used, 401/403), 409 with its copy, the TTS `format`, the provider table, `pcm.ts`, 415, and the content type.
   - Every §6.2 Speech item 1–8 maps to Task 11. Through the real hub, Task 12 covers the chain, items 4 (text only for no speaker or another rate), 5 (a spoken push without `turn`), 6 (barge-in by `say`, by `stop` + TALK, and by TALK after `done`) and 7 (Voice is off once per session).
   - A11, A12, A29 and A30 are covered. A13 (the speaker rate) is honored by `rate: null` → text only; P3a computes the rate.
+  - §10 "End to end": the spoken turn has an exact manual run in Task 13 Step 6 item 6. It runs the simulator with a `say`-made 16 kHz WAV against an OMB2 build of this branch, and needs the packaged app. Talk, approval, push and stop run with a fake engine in P4a's opt-in `server/gadget-hub.sim.e2e.test.ts`.
   - Out-of-scope items are named with their owners.
 - **Placeholders.** None: every code step carries the complete file or the exact old and new text, and every command shows its expected output.
 - **Type consistency.**

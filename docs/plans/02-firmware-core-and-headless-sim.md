@@ -16,7 +16,14 @@
 - an AddressSanitizer + UndefinedBehaviorSanitizer build of every test, the simulator and the end-to-end runs;
 - a `-std=gnu23 -Wall -Wextra -Wpedantic -Werror` compile of every core source (ESP-IDF 6's default C standard), once against mbedTLS 3.6.7's headers and once against 4.2.0's TF-PSA-Crypto headers (ESP-IDF 6.0.3 bundles mbedTLS 4.1.1).
 
-The code was first written against stand-ins for P1's `protocol/vectors` and `tools/fake-host`, built to contract §1.7, §4.4 and §4.7. P1 has since landed on `main`, through `80dff83 fix(P1): address final review`. This revision was replayed onto a clone of that tree with `patch -p1 -F0` (no fuzz): every task's `firmware/` tree matched its verified commit, P1's `package.json` and `ci.yml` took their diffs cleanly, and the finished branch passed 26 of 26 tests on mbedTLS 3.6.7, on 4.2.0 and under ASan + UBSan, with the C vectors test reading P1's real vectors and the six end-to-end scenarios driving P1's real fake host. The fail-first step of every task whose tests changed in this revision (Tasks 7–9, 11–14 and 15a) was rerun and fails as written. What could not be verified here is listed in Task 18.
+The code was first written against stand-ins for P1's `protocol/vectors` and `tools/fake-host`, built to contract §1.7, §4.4 and §4.7. P1 has since landed on `main`, through `80dff83 fix(P1): address final review`. This revision was replayed onto a clone of that tree with `patch -p1 -F0` (no fuzz): every task's `firmware/` tree matched its verified commit, P1's `package.json` and `ci.yml` took their diffs cleanly, and the finished branch passed 26 of 26 tests on mbedTLS 3.6.7, on 4.2.0 and under ASan + UBSan, with the C vectors test reading P1's real vectors and the six end-to-end scenarios driving P1's real fake host. The fail-first step of every task whose tests changed in this revision (Tasks 7–9, 11–14 and 15a) was rerun and fails as written. A seventh scenario, `e2e.bargein_after_done` (Task 16), was added after that replay. It runs MausBot's usual order, `done` before the speech, through P1's real `--done-before-speech`, where the other six all run the fake host's default order (the speech, then `done`). It was run with `run.ts` against the replayed simulator builds (mbedTLS 3.6.7, 4.2.0, and ASan + UBSan) and P1's fake host, and it passes on all three; 7 of 7 scenarios pass on the 3.6.7 build. It fails as written in three cases: on a simulator before Task 16's client, on a simulator mutated to send `stop` on barge-in after `done`, and against the fake host's default order. The full 27-test CTest run with it registered is Task 18's check. The host-name fix in Tasks 8 and 10 (the model keeps the last challenge's `host_name` after its connection closes) was then replayed onto that replay's commits, and every later diff of `session.c` and `core_internal.h` was regenerated from the result. Its new and changed assertions fail on the previous code (`Expected 'Mac' Was ''`, `Expected 'Omkar's Mac' Was ''` and `Expected '' Was 'Mac'`), Task 10's fail-first step still fails as written, and the branch without the seventh scenario passed 26 of 26 tests on mbedTLS 3.6.7, on 4.2.0 and under ASan + UBSan. `gadget_event_send` (Contract deviations, item 9) was then added the same way: its header declaration, `actions.c` code and two tests were committed onto that replay's Task 13 and Tasks 14–17 were replayed on top without conflicts. Task 13's fail-first step fails as written (the link misses `gadget_action_register` and `gadget_event_send`), `test_actions` passes 9 of 9, each new test fails when its check is removed from `actions.c`, the branch without the seventh scenario again passed 26 of 26 tests on mbedTLS 3.6.7, on 4.2.0 and under ASan + UBSan, and the gnu23 check passed against both header sets. The `device_limit` status fix in Tasks 8 and 10 came next. Through the retry window, `pair` stays `error` with `error` `device_limit` (contract §2.11, status rule 2). It was checked by replaying this whole plan onto `80dff83` with `patch -p1 -F0`:
+- Tasks 8 and 10 pass as written.
+- The finished branch passed 27 of 27 tests on mbedTLS 3.6.7, the seven end-to-end scenarios included.
+- `test_session` and `test_console` pass under ASan + UBSan, and `session.c` passes the gnu23 check.
+- With the old `session_pair_state()`, the extended test fails in Task 8 (`Expected 4 Was 2`, so `connecting` instead of `error`). Its `status` checks fail too, printing `"pair":"connecting"` with no `error`.
+- Task 10's fail-first step fails as written.
+
+What could not be verified here is listed in Task 18.
 
 ## Global Constraints
 
@@ -34,7 +41,7 @@ The code was first written against stand-ins for P1's `protocol/vectors` and `to
   - LVGL and SDL belong to plan P2b and are not used here.
 - **Build:** `cmake_minimum_required(VERSION 3.24)`. The build directory is `build/host`, and the simulator is `build/host/ports/sim/gadget-sim`. CTest labels are `unit`, `vectors` and `e2e`. `-DGADGET_WITH_LVGL=OFF` is the P2a default.
 - **License header:** every source file starts with its path comment and `/* SPDX-License-Identifier: Apache-2.0 */` (`#` comments in CMake and `//` in TypeScript).
-- **Contract names are binding:** nothing in contract §2 is renamed, retyped or moved. This plan adds only private files (`core_internal.h`, `console_cmd.c`, `display.c`, `sim_internal.h`, `run_sim_script.cmake`, test scripts) and the additions listed under "Contract deviations" at the end.
+- **Contract names are binding:** nothing in contract §2 is renamed, retyped or moved. This plan adds only private files (`core_internal.h`, `console_cmd.c`, `display.c`, `sim_internal.h`, `run_sim_script.cmake`, test scripts) and the additions listed under "Contract deviations" at the end (the contract adopted items 1–4 and 6–8 there as D22–D28).
 - **Protocol limits (spec §4.1):**
   - text frames ≤ 16 KiB, binary frames ≤ 8 KiB;
   - mic frames are 20 ms (320 samples at 16 kHz);
@@ -50,7 +57,7 @@ The code was first written against stand-ins for P1's `protocol/vectors` and `to
 These five inputs are implied by the spec but no requirement spells them out. A test for each is added to the task that owns the code.
 
 1. **An oversized frame from a misbehaving host** (binary > 8 KiB, text > 16 KiB): it is dropped before decoding, nothing of it reaches the speaker or the screen, and nothing crashes; a frame of exactly 8 KiB still plays. ASan found a stack overflow here while this plan was being verified. Tests: Task 8, `test_frames_over_the_size_limits_are_dropped` (its speaker check bites from Task 11 on, once speech plays), and Task 11, `test_a_frame_of_exactly_8_kib_plays`.
-2. **An update offered while the person is talking or waiting for a reply:** the gadget answers `fw.fail busy` and cuts nobody off. Test: Task 14, `test_busy_while_the_person_is_talking`.
+2. **An update offered while the person is talking or waiting for a reply:** the gadget answers `fw.fail busy` and cuts nobody off (contract D22). Test: Task 14, `test_busy_while_the_person_is_talking`.
 3. **A reboot, crash or power cut of a new image before its first `ready`:** the gadget comes back on the previous image. Tests: Task 14, `test_probation_rolls_back_without_a_ready`, and Task 15b, `sim.reboot_rollback`.
 4. **A tap while a post's chime is playing:** the tap hides the toast. It is not treated as "stop the speech". Test: Task 12, `test_posts_toast_and_chime`.
 5. **Host text the fonts cannot draw, and replies longer than the screen buffer:** the text is folded to `?`, and a long reply keeps its tail after a leading `…`. Tests: Task 9, `test_text_outside_the_charset_is_folded` and `test_a_long_reply_keeps_its_tail`.
@@ -82,7 +89,7 @@ All paths are relative to the SDK repository. One responsibility per file.
 | `firmware/core/src/console_cmd.c` | Running console commands, `@omb` lines |
 | `firmware/core/src/audio.c` | Speech playback, jitter buffer, mouth level, chime |
 | `firmware/core/src/display.c` | Asks and answers, cards, images, post toasts, battery `sense` |
-| `firmware/core/src/actions.c` | `gadget_action_register`, hello declarations, `act` → `act.result`, built-in chime |
+| `firmware/core/src/actions.c` | `gadget_action_register`, hello declarations, `act` → `act.result`, built-in chime, `gadget_event_send` |
 | `firmware/core/src/ota.c` | Offer checks, chunk flow, commit, probation, `gadget_key_find` |
 | `firmware/core/src/keys_release.c`, `keys_test.c` | Release key table (empty until P2d) and the t1 test key table |
 | `firmware/ports/sim/sim_hal.h`, `sim_display.h` | Contract seams (§2.16), verbatim |
@@ -161,7 +168,7 @@ Remove the worktree after the hand-off in Task 18 (`git -C /Users/omkar/Desktop/
 
 - [ ] **Step 2: Write the build files and the contract headers**
 
-The headers are contract §2.2–§2.13, copied byte for byte. Only `gadget_core.h` declares functions that later tasks implement; that is fine, since a declaration without a caller links.
+The headers are contract §2.2–§2.13, copied byte for byte. Contract §2.10's `gadget_actions.h` includes `gadget_event_send` (spec §4.7; Contract deviations, item 9), which Task 13 implements. Only `gadget_core.h` and that declaration name functions that later tasks implement; that is fine, since a declaration without a caller links.
 
 `firmware/CMakeLists.txt` stops at configure time when the C tests are on but the t1 test key is off (`-DGADGET_TEST_KEYS=OFF`): Tasks 14 and 15b sign OTA images with that key, so such a build would only produce red tests that look like regressions.
 
@@ -1100,6 +1107,20 @@ typedef bool (*gadget_action_handler_t)(const cJSON *args, cJSON *data, char *er
  * actions, a field too long, or the hello would exceed 16 KiB). */
 gadget_status_t gadget_action_register(const char *name, const char *description, const char *params_schema_json,
                                        gadget_risk_t risk, gadget_action_handler_t handler);
+
+/* Tell MausBot that something happened on the gadget: sends
+ * `event {name, data?}` (spec §4.7). Main thread only. Events are
+ * informational: MausBot keeps the last 10 per gadget and lists them to
+ * bots as `recent_events`, and nothing reacts to them. Nothing is queued,
+ * so an event sent while busy is lost.
+ *   name: /^[a-z][a-z0-9_.-]{0,31}$/ (the action-name rule)
+ *   data: any JSON value (copied; the caller keeps ownership), ≤ 1024
+ *         bytes when serialized compactly; NULL → "data" omitted
+ * Returns GADGET_OK, GADGET_ERR_ARG (bad name), GADGET_ERR_LIMIT (data too
+ * long), GADGET_ERR_NO_MEM, GADGET_ERR_BUSY (no ready session: offline,
+ * mid-handshake or before core_init()) or the socket's error. The name and
+ * size checks come first, so they fail the same way offline. */
+gadget_status_t gadget_event_send(const char *name, const cJSON *data);
 
 #endif /* GADGET_ACTIONS_H */
 ```
@@ -5898,18 +5919,19 @@ git commit -m "firmware: core init, identity, storage and the fake HAL" -m "Co-A
 - Consumes: `gp_*` (Task 2), the crypto group (Task 3), `core_internal.h` (Task 7).
 - Produces:
   - **Public:** `core_pair_state` and `core_last_error`.
-  - **Private, from `session.c`:** `session_init/deinit/event/tick`, `session_ready`, `session_send(op, json, len)` (taps, then sends; it returns an encoder's negative length unchanged), `session_send_binary`, `session_reconnect_now(clear_error)` (for `pair` and `host`), `session_wake` (TALK after `replaced`), `session_pair_state`, `session_last_error`, `session_host_in_use` and `session_is_setup`. Also the shared encode buffer `g_core_tx[GADGET_TEXT_FRAME_MAX]`.
+  - **Private, from `session.c`:** `session_init/deinit/event/tick`, `session_ready`, `session_send(op, json, len)` (taps, then sends; it returns an encoder's negative length unchanged), `session_send_binary`, `session_reconnect_now(clear_error)` (for `pair` and `host`), `session_wake` (TALK after `replaced`), `session_pair_state`, `session_last_error`, `session_host_in_use`, `session_is_setup` and `session_clear_host_name` (for `host`, `host auto` and `forget`). Also the shared encode buffer `g_core_tx[GADGET_TEXT_FRAME_MAX]`.
   - **Private, from `screens.c`:** `screens_update`, which applies contract §2.7's order (Update → Listening → Ask → Speaking → Thinking → Reply → Image → Card → Idle). It falls back to Setup when nothing is paired, and to Offline otherwise.
   - **Private hooks in `core.c`:** `core_tap`, `core_on_ready`, `core_on_session_lost`, `core_on_msg` and `core_on_binary`, which Tasks 9–14 extend.
   - **The spec §4.3 reaction table:**
     - `bad_code` clears the code, sets `pair` to `error`, and stops.
     - `enroll_required` and `revoked` clear `host_id`, so the gadget is unpaired, shows Setup, and stops.
-    - `device_limit` keeps the code and retries every 10 s until 120 s after the code was given, then clears it.
+    - `device_limit` keeps the code and retries every 10 s until 120 s after the code was given, then clears it. Through that whole window, including while a retry is connecting, `core_pair_state()` is `CORE_PAIR_ERROR` and `core_last_error()` is `"device_limit"`. So `status` prints `"pair":"error","error":"device_limit"` (contract §2.11, status rule 2), and P2d's installer and console helper can say why the gadget is waiting instead of timing out. Once the code is cleared, a gadget that was never paired is `unpaired` and `status` has no `error` field. Test: `test_device_limit_retries_every_10_s_for_120_s` (Task 10 adds the `status` line checks).
     - `replaced` goes Offline with `in_use_elsewhere` and stops until TALK.
     - `proto_unsupported`, `bad_sig`, a bad `host_id` and drops set `error` and reconnect with backoff 2, 4, 8 … 60 s; `ready` resets the backoff.
   - **Liveness and frame limits:** 45 s without an inbound frame (a ping counts) closes the session with 1001. Inbound frames over the limits are dropped (Review Focus 1).
-  - **host auto:** browse 5 s, then pick the service whose TXT `id` equals the stored `host_id`, or the only one before pairing. Otherwise print `@omb {"op":"hosts",…}`. A gadget that was never paired then waits for `host <address>` (spec §5.6), or for a new `pair` or `host auto`. A paired gadget keeps looking for its own MausBot with backoff (Contract deviations, item 8). The `hosts` line prints only on the first miss of a run of misses (`ready`, `pair` and `host` start a new run), so P2d's installer asks once. On a port without mDNS, print an empty `hosts` line and wait.
+  - **host auto:** browse 5 s, then pick the service whose TXT `id` equals the stored `host_id`, or the only one before pairing. Otherwise print `@omb {"op":"hosts",…}`. A gadget that was never paired then waits for `host <address>` (spec §5.6), or for a new `pair` or `host auto`. A paired gadget keeps looking for its own MausBot with backoff (contract D28). The `hosts` line prints only on the first miss of a run of misses (`ready`, `pair` and `host` start a new run), so P2d's installer asks once. On a port without mDNS, print an empty `hosts` line and wait.
   - **`settings`:** updates the bot, `speak_pushes` and the name (through `core_set_name`, so at most 32 characters; stored; the next `hello` carries it).
+  - **The model's `host_name` (spec §5.5: Setup "shows `host_name` once a `challenge` has arrived"):** the last challenge's `host_name` when one has arrived, otherwise the stored one. It outlives the connection that brought it, so on a gadget that was never paired the Setup screens after `bad_code` and `device_limit` still name the host. Only a new challenge, `host`, `host auto` and `forget` drop it (`session_clear_host_name`); a new `pair` keeps it, because the host is the same. The stored `host_name` is still written only on `ready`. Test: `test_setup_keeps_the_challenge_host_name_after_bad_code`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -6058,6 +6080,22 @@ static void test_bad_code_clears_the_code_and_stops(void) {
   TEST_ASSERT_EQUAL_INT(1, fake_ws_opens()); /* no retry until a new pair command */
 }
 
+/* Spec 5.5: Setup shows host_name once a challenge has arrived, also after
+ * the connection that brought it has closed. */
+static void test_setup_keeps_the_challenge_host_name_after_bad_code(void) {
+  store_code_only();
+  fake_boot("lcd-154");
+  TEST_ASSERT_EQUAL_STRING("", core_ui_model()->host_name); /* no challenge yet */
+  fake_ws_accept();
+  fake_ws_in("{\"op\":\"challenge\",\"nonce\":\"" FAKE_NONCE "\",\"host_id\":\"" FAKE_HOST_ID "\",\"host_name\":\"Mac\"}");
+  host_error("bad_code");
+  TEST_ASSERT_FALSE(fake_ws_live()); /* the connection that brought the name is closed */
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_SETUP, core_ui_model()->screen);
+  TEST_ASSERT_EQUAL_INT(UI_SETUP_BAD_CODE, core_ui_model()->setup.step);
+  TEST_ASSERT_EQUAL_STRING("Mac", core_ui_model()->host_name);
+  TEST_ASSERT_FALSE(fake_storage_has(GADGET_KEY_HOST_NAME)); /* stored only on ready */
+}
+
 static void test_enroll_required_and_revoked_unpair(void) {
   fake_store_paired();
   fake_boot("amoled-175c");
@@ -6087,11 +6125,17 @@ static void test_device_limit_retries_every_10_s_for_120_s(void) {
   host_error("device_limit");
   TEST_ASSERT_TRUE(fake_storage_has(GADGET_KEY_PAIR_CODE));
   TEST_ASSERT_EQUAL_INT(UI_SETUP_DEVICE_LIMIT, core_ui_model()->setup.step);
+  TEST_ASSERT_EQUAL_STRING("Omkar's Mac", core_ui_model()->host_name); /* kept after the close */
+  /* pair "error" with "device_limit" for the whole window (contract §2.11), so
+   * P2d's installer can say why instead of timing out */
+  TEST_ASSERT_EQUAL_INT(CORE_PAIR_ERROR, core_pair_state());
+  TEST_ASSERT_EQUAL_STRING("device_limit", core_last_error());
   int opens = fake_ws_opens();
   fake_run(9900);
   TEST_ASSERT_EQUAL_INT(opens, fake_ws_opens());
   fake_run(200);
   TEST_ASSERT_EQUAL_INT(opens + 1, fake_ws_opens());
+  TEST_ASSERT_EQUAL_INT(CORE_PAIR_ERROR, core_pair_state()); /* also while a retry connects */
   /* keep answering device_limit until the window closes */
   uint64_t gave_up = 0;
   while (gave_up == 0 && fake_now() < 200000) {
@@ -6100,7 +6144,12 @@ static void test_device_limit_retries_every_10_s_for_120_s(void) {
       host_error("device_limit");
     }
     fake_run(100);
-    if (!fake_storage_has(GADGET_KEY_PAIR_CODE)) gave_up = fake_now();
+    if (!fake_storage_has(GADGET_KEY_PAIR_CODE)) {
+      gave_up = fake_now();
+    } else {
+      TEST_ASSERT_EQUAL_INT(CORE_PAIR_ERROR, core_pair_state());
+      TEST_ASSERT_EQUAL_STRING("device_limit", core_last_error());
+    }
   }
   TEST_ASSERT_TRUE(gave_up >= 120000 && gave_up <= 120200); /* 120 s after the code was stored */
   TEST_ASSERT_EQUAL_INT(CORE_PAIR_UNPAIRED, core_pair_state());
@@ -6399,6 +6448,7 @@ int main(void) {
   RUN_TEST(test_enrollment_sends_the_code_and_stores_the_host);
   RUN_TEST(test_challenge_with_a_bad_host_id_closes_and_backs_off);
   RUN_TEST(test_bad_code_clears_the_code_and_stops);
+  RUN_TEST(test_setup_keeps_the_challenge_host_name_after_bad_code);
   RUN_TEST(test_enroll_required_and_revoked_unpair);
   RUN_TEST(test_device_limit_retries_every_10_s_for_120_s);
   RUN_TEST(test_replaced_shows_in_use_and_stays_offline);
@@ -6493,8 +6543,7 @@ static struct {
   uint32_t backoff_ms;
   char resolved[CORE_HOST_ADDR_MAX];
   char ch_host_id[GADGET_HOST_ID_LEN + 1];
-  char ch_host_name[UI_NAME_MAX];
-  bool ch_name_live;
+  char ch_host_name[UI_NAME_MAX]; /* the last challenge's; outlives its connection (spec 5.5) */
   char last_error[24];
   bool error_flag;             /* @omb pair "error" */
   bool protocol_error;         /* Offline reason "protocol" */
@@ -6685,7 +6734,6 @@ static void on_challenge(const gp_challenge_t *c) {
   }
   snprintf(S.ch_host_id, sizeof S.ch_host_id, "%s", c->host_id);
   core_text_copy(S.ch_host_name, sizeof S.ch_host_name, c->host_name ? c->host_name : "");
-  S.ch_name_live = true;
   S.challenged = true;
   char text[160];
   int tn = gp_prove_text(text, sizeof text, g_core.id, c->nonce, c->host_id);
@@ -6800,7 +6848,6 @@ static void on_closed(uint16_t code) {
   hal_log(GADGET_LOG_INFO, TAG, "connection closed (%u)", (unsigned)code);
   S.ws_live = false;
   S.challenged = false;
-  S.ch_name_live = false;
   if (!S.ws_opened) S.resolved[0] = '\0'; /* connect failed: resolve again next time */
   if (S.was_ready) {
     S.was_ready = false;
@@ -6844,7 +6891,7 @@ static void publish(void) {
   ui_model_t *m = &g_core.model;
   snprintf(m->device_name, sizeof m->device_name, "%s", g_core.name);
   core_text_copy(m->bot_name, sizeof m->bot_name, g_core.bot_name);
-  core_text_copy(m->host_name, sizeof m->host_name, S.ch_name_live ? S.ch_host_name : g_core.host_name);
+  core_text_copy(m->host_name, sizeof m->host_name, S.ch_host_name[0] ? S.ch_host_name : g_core.host_name);
   gadget_wifi_state_t wifi = hal_wifi_state();
   m->setup.wifi_set = g_core.wifi_ssid[0] != '\0' || wifi == GADGET_WIFI_CONNECTED;
   m->setup.code_stored = g_core.pair_code[0] != '\0';
@@ -6988,6 +7035,8 @@ void session_wake(void) {
   if (S.st == SS_HALTED && S.halt == HALT_REPLACED) session_reconnect_now(false);
 }
 
+void session_clear_host_name(void) { S.ch_host_name[0] = '\0'; }
+
 const char *session_host_in_use(void) {
   if (g_core.host_addr[0] != '\0') return g_core.host_addr;
   if (S.resolved[0] != '\0') return S.resolved;
@@ -6996,7 +7045,9 @@ const char *session_host_in_use(void) {
 
 core_pair_state_t session_pair_state(void) {
   if (S.st == SS_READY) return CORE_PAIR_PAIRED;
-  if (S.error_flag) return CORE_PAIR_ERROR;
+  /* device_limit: "error" for its whole 120 s window, retries included; on_error
+   * set last_error to "device_limit" (contract §2.11) */
+  if (S.error_flag || S.device_limit) return CORE_PAIR_ERROR;
   if (g_core.host_id[0] == '\0' && g_core.pair_code[0] == '\0') return CORE_PAIR_UNPAIRED;
   if (session_host_in_use() != NULL) return CORE_PAIR_CONNECTING;
   if (g_core.pair_code[0] != '\0') return CORE_PAIR_CODE_STORED;
@@ -7055,7 +7106,7 @@ Change `firmware/core/src/core_internal.h` exactly as this diff shows (`-` lines
 ```diff
 --- a/firmware/core/src/core_internal.h
 +++ b/firmware/core/src/core_internal.h
-@@ -71,5 +71,35 @@ void core_set_name(const char *src);
+@@ -71,5 +71,37 @@ void core_set_name(const char *src);
  void core_next_turn_id(char out[GADGET_TURN_MAX + 1]);
  /* Print "@omb " + the compact JSON of obj on the console; frees obj. */
  void core_omb(cJSON *obj);
@@ -7082,6 +7133,8 @@ Change `firmware/core/src/core_internal.h` exactly as this diff shows (`-` lines
 +void session_reconnect_now(bool clear_error);
 +/* TALK while halted by `replaced`: reconnect. */
 +void session_wake(void);
++/* `host`, `host auto` and `forget`: drop the last challenge's host_name. */
++void session_clear_host_name(void);
 +core_pair_state_t session_pair_state(void);
 +const char *session_last_error(void);
 +const char *session_host_in_use(void);          /* "addr:port", or NULL when unknown */
@@ -7201,7 +7254,7 @@ Change `firmware/core/CMakeLists.txt` exactly as this diff shows (`-` lines go, 
 - [ ] **Step 4: Run the tests**
 
 Run: `cmake --build build/host -j10 && ctest --test-dir build/host --output-on-failure -L "unit|vectors"`
-Expected: `100% tests passed, 0 tests failed out of 8`; `test_session` prints `23 Tests 0 Failures 0 Ignored`. `fake_handshake()` asserts that every `prove` signature verifies against the gadget's own public key over the contract's prove text.
+Expected: `100% tests passed, 0 tests failed out of 8`; `test_session` prints `24 Tests 0 Failures 0 Ignored`. `fake_handshake()` asserts that every `prove` signature verifies against the gadget's own public key over the contract's prove text.
 
 - [ ] **Step 5: Commit**
 
@@ -7976,7 +8029,7 @@ Change `firmware/core/src/core_internal.h` exactly as this diff shows (`-` lines
 ```diff
 --- a/firmware/core/src/core_internal.h
 +++ b/firmware/core/src/core_internal.h
-@@ -99,6 +99,21 @@ const char *session_last_error(void);
+@@ -101,6 +101,21 @@ const char *session_last_error(void);
  const char *session_host_in_use(void);          /* "addr:port", or NULL when unknown */
  bool session_is_setup(void);                    /* never paired (no host_id) */
  
@@ -8097,7 +8150,7 @@ git commit -m "firmware: voice and typed turns, cancel, 60 s limit, disconnects"
 **Files:**
 - Create: `firmware/core/src/console_cmd.c`
 - Modify: `firmware/core/src/core.c`, `firmware/core/src/core_internal.h`, `firmware/core/CMakeLists.txt`, `firmware/tests/CMakeLists.txt`
-- Test: `firmware/tests/test_console.c`
+- Test: `firmware/tests/test_console.c`; `firmware/tests/test_session.c` (the `status` line during and after a `device_limit` window)
 
 **Interfaces:**
 - Consumes: `gadget_console_parse` (Task 6); the `session_*` calls (Task 8); `interaction_say` (Task 9).
@@ -8108,17 +8161,18 @@ git commit -m "firmware: voice and typed turns, cancel, 60 s limit, disconnects"
 |---|---|
 | `wifi` | Stores and calls `hal_wifi_connect` |
 | `scan` | `hal_wifi_scan`, then one `@omb scan` line |
-| `host auto` | Erases `host_addr` and reconnects through mDNS |
-| `host <a>[:p]` | Stores `addr:port` and reconnects |
+| `host auto` | Erases `host_addr`, drops the last challenge's host name and reconnects through mDNS |
+| `host <a>[:p]` | Stores `addr:port`, drops the last challenge's host name and reconnects |
 | `pair <code>` | Stores the code, clears the error state and reconnects at once |
 | `name` | Stores the name (through `core_set_name`); the next `hello` carries it |
 | `say` | Sends a `say` turn and prints `@omb {"op":"say","turn":…}`; without a session, prints `@omb {"op":"error","cmd":"say","message":"not connected to MausBot"}` |
 | `status` | Prints the `@omb status` line |
 | `log off` / `log on` | `hal_log_set_enabled`; `@omb` lines always print |
-| `forget` | `hal_storage_erase_all()`, then `hal_restart()` |
+| `forget` | Drops the last challenge's host name, `hal_storage_erase_all()`, then `hal_restart()` |
 | `reboot` | `hal_restart()` |
 
   Errors print `@omb {"op":"error","cmd":…,"message":…}`. The `status` field order is exactly: `op`, `wifi`, `ssid`?, `host`?, `id`, `pair`, `error`?, `fw`, `battery`?, `board`, `name`, `host_name`?. P2d's installer and the end-to-end runner read these lines.
+- `pair` and `error` come from `session_pair_state()` and `session_last_error()` (Task 8). Through a `device_limit` window, retries included, `status` prints `"pair":"error","error":"device_limit"`. Once the window closes and the code is cleared, a gadget that was never paired prints `"pair":"unpaired"` with no `error` field (contract §2.11, status rule 2). `test_device_limit_retries_every_10_s_for_120_s` checks both lines.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -8173,6 +8227,7 @@ static void test_status_after_bad_code_then_a_new_pair(void) {
   cJSON *st = fake_omb("status");
   TEST_ASSERT_EQUAL_STRING("error", cJSON_GetObjectItem(st, "pair")->valuestring);
   TEST_ASSERT_EQUAL_STRING("bad_code", cJSON_GetObjectItem(st, "error")->valuestring);
+  TEST_ASSERT_EQUAL_STRING("Mac", cJSON_GetObjectItem(st, "host_name")->valuestring); /* from the challenge */
   cJSON_Delete(st);
   int opens = fake_ws_opens();
   fake_console_in("pair 222222");
@@ -8225,6 +8280,32 @@ static void test_wifi_host_and_name_are_stored(void) {
   fake_run(10);
   TEST_ASSERT_FALSE(fake_storage_has(GADGET_KEY_HOST_ADDR));
   TEST_ASSERT_EQUAL_INT(1, fake_mdns_browses()); /* the open session was dropped and mDNS asked */
+}
+
+static void test_host_and_host_auto_drop_the_challenge_host_name(void) {
+  static const char *CHALLENGE_MAC =
+      "{\"op\":\"challenge\",\"nonce\":\"" FAKE_NONCE "\",\"host_id\":\"" FAKE_HOST_ID "\",\"host_name\":\"Mac\"}";
+  fake_storage_put(GADGET_KEY_HOST_ADDR, "192.168.1.20:8810");
+  fake_storage_put(GADGET_KEY_PAIR_CODE, "111111");
+  fake_boot("lcd-154");
+  fake_ws_accept();
+  fake_ws_in(CHALLENGE_MAC);
+  fake_ws_in("{\"op\":\"error\",\"code\":\"bad_code\"}");
+  fake_run(10);
+  TEST_ASSERT_EQUAL_STRING("Mac", core_ui_model()->host_name);
+  fake_console_in("pair 222222");
+  fake_run(10);
+  TEST_ASSERT_EQUAL_STRING("Mac", core_ui_model()->host_name); /* a new code keeps it: same host */
+  fake_console_in("host 192.168.1.30");
+  fake_run(10);
+  TEST_ASSERT_EQUAL_STRING("", core_ui_model()->host_name); /* another host: its name is not known yet */
+  TEST_ASSERT_EQUAL_STRING("192.168.1.30", fake_ws_host());
+  fake_ws_accept();
+  fake_ws_in(CHALLENGE_MAC);
+  TEST_ASSERT_EQUAL_STRING("Mac", core_ui_model()->host_name);
+  fake_console_in("host auto");
+  fake_run(10);
+  TEST_ASSERT_EQUAL_STRING("", core_ui_model()->host_name);
 }
 
 static void test_say_sends_a_typed_turn(void) {
@@ -8312,6 +8393,7 @@ int main(void) {
   RUN_TEST(test_status_after_bad_code_then_a_new_pair);
   RUN_TEST(test_code_stored_before_a_host_is_known);
   RUN_TEST(test_wifi_host_and_name_are_stored);
+  RUN_TEST(test_host_and_host_auto_drop_the_challenge_host_name);
   RUN_TEST(test_say_sends_a_typed_turn);
   RUN_TEST(test_scan_prints_one_line);
   RUN_TEST(test_errors_are_reported);
@@ -8337,10 +8419,62 @@ Change `firmware/tests/CMakeLists.txt` exactly as this diff shows (`-` lines go,
  add_executable(test_vectors test_vectors.c)
 ```
 
+Extend Task 8's `test_device_limit_retries_every_10_s_for_120_s` so it reads the `status` line itself, the way P2d's installer and console helper do.
+
+Change `firmware/tests/test_session.c` exactly as this diff shows (`-` lines go, `+` lines come; the rest is context):
+
+```diff
+--- a/firmware/tests/test_session.c
++++ b/firmware/tests/test_session.c
+@@ -36,6 +36,16 @@ static void host_error(const char *code) {
+   fake_run(10); /* the close core asked for is delivered */
+ }
+ 
++/* `status` as P2d's installer reads it: the @omb line contains want. The field
++ * order is pinned (contract §2.11), so want can span fields. */
++static void expect_status(const char *want) {
++  fake_console_clear();
++  fake_console_in("status");
++  const char *line = fake_console_count() > 0 ? fake_console_line(fake_console_count() - 1) : "";
++  TEST_ASSERT_EQUAL_STRING_LEN_MESSAGE("@omb {\"op\":\"status\",", line, 20, "no @omb status line");
++  TEST_ASSERT_NOT_NULL_MESSAGE(strstr(line, want), line);
++}
++
+ static void test_unpaired_gadget_waits_on_setup(void) {
+   fake_boot("amoled-175c");
+   fake_run(5000);
+@@ -190,12 +200,14 @@ static void test_device_limit_retries_every_10_s_for_120_s(void) {
+    * P2d's installer can say why instead of timing out */
+   TEST_ASSERT_EQUAL_INT(CORE_PAIR_ERROR, core_pair_state());
+   TEST_ASSERT_EQUAL_STRING("device_limit", core_last_error());
++  expect_status("\"pair\":\"error\",\"error\":\"device_limit\",");
+   int opens = fake_ws_opens();
+   fake_run(9900);
+   TEST_ASSERT_EQUAL_INT(opens, fake_ws_opens());
+   fake_run(200);
+   TEST_ASSERT_EQUAL_INT(opens + 1, fake_ws_opens());
+   TEST_ASSERT_EQUAL_INT(CORE_PAIR_ERROR, core_pair_state()); /* also while a retry connects */
++  expect_status("\"pair\":\"error\",\"error\":\"device_limit\",");
+   /* keep answering device_limit until the window closes */
+   uint64_t gave_up = 0;
+   while (gave_up == 0 && fake_now() < 200000) {
+@@ -213,6 +225,7 @@ static void test_device_limit_retries_every_10_s_for_120_s(void) {
+   }
+   TEST_ASSERT_TRUE(gave_up >= 120000 && gave_up <= 120200); /* 120 s after the code was stored */
+   TEST_ASSERT_EQUAL_INT(CORE_PAIR_UNPAIRED, core_pair_state());
++  expect_status("\"pair\":\"unpaired\",\"fw\":"); /* no error field once the code is gone */
+   opens = fake_ws_opens();
+   fake_run(60000);
+   TEST_ASSERT_EQUAL_INT(opens, fake_ws_opens());
+```
+
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `cmake --build build/host -j10 && ./build/host/tests/test_console`
 Expected: it builds and fails with `test_status_of_a_fresh_gadget:FAIL: Expected '@omb {"op":"status",…'`, because console lines are still ignored. A later test may end the run with a segmentation fault (exit 139) when it reads an `@omb` line that never printed.
+
+Run: `./build/host/tests/test_session`
+Expected: `test_device_limit_retries_every_10_s_for_120_s:FAIL: Expected '@omb {"op":"status",' Was ''` … `no @omb status line`, and `24 Tests 1 Failures 0 Ignored`. Task 8's core-level checks in that test still pass: only the `status` line is missing.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -8467,11 +8601,13 @@ void console_exec_line(const char *text) {
     case GC_HOST_AUTO:
       g_core.host_addr[0] = '\0';
       core_store_erase(GADGET_KEY_HOST_ADDR);
+      session_clear_host_name();
       session_reconnect_now(false);
       break;
     case GC_HOST_SET:
       snprintf(g_core.host_addr, sizeof g_core.host_addr, "%s:%u", p.a, (unsigned)p.port);
       core_store_str(GADGET_KEY_HOST_ADDR, g_core.host_addr);
+      session_clear_host_name();
       session_reconnect_now(false);
       break;
     case GC_PAIR:
@@ -8506,6 +8642,7 @@ void console_exec_line(const char *text) {
       break;
     case GC_FORGET:
       hal_log(GADGET_LOG_WARN, TAG, "forget: erasing the pairing, key, Wi-Fi and name");
+      session_clear_host_name();
       hal_storage_erase_all();
       hal_restart();
     case GC_REBOOT:
@@ -8519,7 +8656,7 @@ Change `firmware/core/src/core_internal.h` exactly as this diff shows (`-` lines
 ```diff
 --- a/firmware/core/src/core_internal.h
 +++ b/firmware/core/src/core_internal.h
-@@ -114,6 +114,10 @@ bool interaction_turn_in_flight(void);          /* sent and no done yet */
+@@ -116,6 +116,10 @@ bool interaction_turn_in_flight(void);          /* sent and no done yet */
  /* Mean square of PCM16 samples (shared by the mic and speaker levels). */
  uint32_t core_mean_square(const int16_t *pcm, size_t n);
  
@@ -8570,12 +8707,12 @@ Change `firmware/core/CMakeLists.txt` exactly as this diff shows (`-` lines go, 
 - [ ] **Step 4: Run the tests**
 
 Run: `cmake --build build/host -j10 && ctest --test-dir build/host --output-on-failure -L "unit|vectors"`
-Expected: `100% tests passed, 0 tests failed out of 10`; `test_console` prints `11 Tests 0 Failures 0 Ignored`.
+Expected: `100% tests passed, 0 tests failed out of 10`; `test_console` prints `12 Tests 0 Failures 0 Ignored` and `test_session` prints `24 Tests 0 Failures 0 Ignored`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add firmware/core firmware/tests/test_console.c firmware/tests/CMakeLists.txt
+git add firmware/core firmware/tests/test_console.c firmware/tests/test_session.c firmware/tests/CMakeLists.txt
 git commit -m "firmware: console commands and machine-readable @omb lines" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -9166,7 +9303,7 @@ Change `firmware/core/src/core_internal.h` exactly as this diff shows (`-` lines
 ```diff
 --- a/firmware/core/src/core_internal.h
 +++ b/firmware/core/src/core_internal.h
-@@ -114,6 +114,15 @@ bool interaction_turn_in_flight(void);          /* sent and no done yet */
+@@ -116,6 +116,15 @@ bool interaction_turn_in_flight(void);          /* sent and no done yet */
  /* Mean square of PCM16 samples (shared by the mic and speaker levels). */
  uint32_t core_mean_square(const int16_t *pcm, size_t n);
  
@@ -10223,7 +10360,7 @@ Change `firmware/core/src/core_internal.h` exactly as this diff shows (`-` lines
 ```diff
 --- a/firmware/core/src/core_internal.h
 +++ b/firmware/core/src/core_internal.h
-@@ -122,6 +122,21 @@ void audio_on_binary(uint8_t stream, const uint8_t *payload, size_t len);   /* s
+@@ -124,6 +124,21 @@ void audio_on_binary(uint8_t stream, const uint8_t *payload, size_t len);   /* s
  void audio_tick(void);
  void audio_stop_local(void);                    /* stop playback now (tap, barge-in, cancel) */
  bool audio_active(void);                        /* something is playing or buffered */
@@ -10339,14 +10476,18 @@ git commit -m "firmware: asks, cards, images, post toasts with a chime, battery 
 - Test: `firmware/tests/test_actions.c`
 
 **Interfaces:**
-- Consumes: `gadget_actions.h`; `gp_encode_hello` (Task 2); `audio_play_chime` (Task 12).
-- Produces: `gadget_action_register` (public, contract §2.10), `actions_init` (registers `chime`), `actions_deinit`, `actions_on_msg` (`act` → exactly one `act.result`) and `actions_decls(&n)` for `hello`.
+- Consumes: `gadget_actions.h`; `gp_encode_hello` and `gp_encode_event` (Task 2); `session_ready` and `session_send` (Task 8); `audio_play_chime` (Task 12).
+- Produces: `gadget_action_register` (public, contract §2.10), `gadget_event_send` (public, contract §2.10; Contract deviations, item 9), `actions_init` (registers `chime`), `actions_deinit`, `actions_on_msg` (`act` → exactly one `act.result`) and `actions_decls(&n)` for `hello`.
 - Registration rules:
   - The name must match `/^[a-z][a-z0-9_.-]{0,31}$/`. The description is 1–200 code points. The schema must be a JSON object of at most 1024 bytes once re-serialized compactly; `NULL` means `{"type":"object","properties":{}}`. There are at most 16 actions.
   - A registration that would push the `hello` past 16 KiB is refused with `GADGET_ERR_LIMIT`. The check encodes the `hello` with the longest name there can be (32 × `…`, 96 bytes) and battery, so a later rename never pushes it over.
   - A duplicate name returns `GADGET_ERR_STATE`.
   - Registration needs `core_init()` first (otherwise `GADGET_ERR_STATE`). Ports and makers register between `core_init()` and the first `core_tick()`.
 - `act` behavior: an unknown name gets `{"ok":false,"error":"unknown action"}`. A handler's error text is folded to the gadget charset, and an empty `data` object is omitted.
+- `gadget_event_send` rules (spec §4.7 and §7, so `recent_events` can fill):
+  - The name follows the action-name rule (`GADGET_ERR_ARG` otherwise). The data is any JSON value or `NULL` (then `data` is omitted), at most 1024 bytes once serialized compactly (`GADGET_ERR_LIMIT` otherwise).
+  - Without a ready session (offline, mid-handshake, or before `core_init()`) it returns `GADGET_ERR_BUSY` and queues nothing. The name and size checks come first, so a maker sees the same error offline.
+  - It encodes with `gp_encode_event` and sends at once through `session_send`, which taps it like any other frame.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -10355,7 +10496,7 @@ Create `firmware/tests/test_actions.c`:
 ```c
 /* firmware/tests/test_actions.c */
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Action declarations, limits and act/act.result (core/src/actions.c). */
+/* Action declarations, limits, act/act.result and events (core/src/actions.c). */
 #include <string.h>
 #include "fake_hal.h"
 #include "gadget_actions.h"
@@ -10536,6 +10677,53 @@ static void test_act_chime_plays_and_returns_ok(void) {
   TEST_ASSERT_EQUAL_size_t(4800, fake_spk_accepted());
 }
 
+static void test_event_send_while_ready_and_busy_otherwise(void) {
+  fake_store_paired();
+  fake_boot("amoled-175c");
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_BUSY, gadget_event_send("button.long_press", NULL)); /* not connected */
+  fake_handshake();
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, gadget_event_send("button.long_press", NULL));
+  TEST_ASSERT_EQUAL_STRING("{\"op\":\"event\",\"name\":\"button.long_press\"}", fake_ws_text(fake_ws_sent() - 1));
+  cJSON *data = cJSON_Parse("{\"knob\":3,\"room\":\"Kitchen\"}");
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, gadget_event_send("knob.turn", data));
+  TEST_ASSERT_EQUAL_STRING("{\"op\":\"event\",\"name\":\"knob.turn\",\"data\":{\"knob\":3,\"room\":\"Kitchen\"}}",
+                           fake_ws_text(fake_ws_sent() - 1));
+  fake_ws_drop(1006);
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_BUSY, gadget_event_send("knob.turn", data)); /* the session is gone */
+  fake_run(2000);
+  fake_ws_accept();
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("hello"));
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_BUSY, gadget_event_send("knob.turn", data)); /* hello sent, no ready yet */
+  TEST_ASSERT_EQUAL_size_t(2, fake_ws_count("event")); /* nothing was queued while busy */
+  cJSON_Delete(data);
+}
+
+static void test_event_send_checks_the_name_and_the_data_size(void) {
+  fake_ready("amoled-175c");
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_ARG, gadget_event_send(NULL, NULL));
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_ARG, gadget_event_send("", NULL));
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_ARG, gadget_event_send("Button", NULL));
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_ARG, gadget_event_send("abcdefghijklmnopqrstuvwxyz0123456", NULL));
+  static char text[1024];
+  memset(text, 'x', 1022);
+  text[1022] = '\0';
+  cJSON *fits = cJSON_CreateString(text); /* "xx…x" serializes to exactly 1024 bytes */
+  text[1022] = 'x';
+  text[1023] = '\0';
+  cJSON *over = cJSON_CreateString(text); /* 1025 bytes */
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, gadget_event_send("note", fits));
+  TEST_ASSERT_EQUAL_size_t(strlen("{\"op\":\"event\",\"name\":\"note\",\"data\":}") + 1024,
+                           strlen(fake_ws_text(fake_ws_sent() - 1)));
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_LIMIT, gadget_event_send("note", over));
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("event"));
+  fake_ws_drop(1006); /* offline, the name and size checks still come first */
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_ARG, gadget_event_send("Button", NULL));
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_LIMIT, gadget_event_send("note", over));
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_BUSY, gadget_event_send("note", fits));
+  cJSON_Delete(fits);
+  cJSON_Delete(over);
+}
+
 int main(void) {
   if (psa_crypto_init() != PSA_SUCCESS) return 3;
   UNITY_BEGIN();
@@ -10546,6 +10734,8 @@ int main(void) {
   RUN_TEST(test_a_longer_name_still_fits_the_hello);
   RUN_TEST(test_act_runs_the_handler);
   RUN_TEST(test_act_chime_plays_and_returns_ok);
+  RUN_TEST(test_event_send_while_ready_and_busy_otherwise);
+  RUN_TEST(test_event_send_checks_the_name_and_the_data_size);
   return UNITY_END();
 }
 ```
@@ -10568,7 +10758,7 @@ Change `firmware/tests/CMakeLists.txt` exactly as this diff shows (`-` lines go,
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `cmake --build build/host -j10`
-Expected: the link of `test_actions` fails on `gadget_action_register`.
+Expected: the link of `test_actions` fails on `gadget_action_register` and `gadget_event_send`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -10577,9 +10767,9 @@ Create `firmware/core/src/actions.c`:
 ```c
 /* firmware/core/src/actions.c */
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Actions a gadget declares in hello and runs on `act` (gadget_actions.h,
- * spec §4.3 limits, §4.7, §5.10). The built-in `chime` is registered by
- * core_init(). */
+/* Actions a gadget declares in hello and runs on `act`, and the events it
+ * sends (gadget_actions.h, spec §4.3 limits, §4.7, §5.10). The built-in
+ * `chime` is registered by core_init(). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10587,6 +10777,7 @@ Create `firmware/core/src/actions.c`:
 #include "gadget_actions.h"
 
 #define TAG "actions"
+#define EVENT_DATA_MAX 1024u /* an event's data, serialized compactly (gadget_actions.h) */
 
 typedef struct {
   char name[GADGET_ACTION_NAME_MAX + 1];
@@ -10715,6 +10906,20 @@ bool actions_on_msg(const gp_msg_t *m) {
   return true;
 }
 
+gadget_status_t gadget_event_send(const char *name, const cJSON *data) {
+  if (!valid_name(name)) return GADGET_ERR_ARG;
+  if (data != NULL) {
+    char *json = cJSON_PrintUnformatted(data);
+    if (json == NULL) return GADGET_ERR_NO_MEM;
+    size_t len = strlen(json);
+    cJSON_free(json);
+    if (len > EVENT_DATA_MAX) return GADGET_ERR_LIMIT;
+  }
+  if (!g_core.initialized || !session_ready()) return GADGET_ERR_BUSY;
+  gp_event_msg_t ev = {.name = name, .data = data};
+  return session_send("event", g_core_tx, gp_encode_event(g_core_tx, sizeof g_core_tx, &ev));
+}
+
 static bool chime_handler(const cJSON *args, cJSON *data, char *error, size_t error_cap) {
   (void)args;
   (void)data;
@@ -10742,7 +10947,7 @@ Change `firmware/core/src/session.c` exactly as this diff shows (`-` lines go, `
 ```diff
 --- a/firmware/core/src/session.c
 +++ b/firmware/core/src/session.c
-@@ -76,6 +76,7 @@ gadget_status_t session_send_binary(const uint8_t *frame, size_t len) {
+@@ -75,6 +75,7 @@ gadget_status_t session_send_binary(const uint8_t *frame, size_t len) {
  static void send_hello(void) {
    gp_hello_t h = {.id = g_core.id, .pubkey_b64 = g_core.pub_b64, .name = g_core.name, .fw = g_core.fw,
                    .board = g_core.board};
@@ -10757,7 +10962,7 @@ Change `firmware/core/src/core_internal.h` exactly as this diff shows (`-` lines
 ```diff
 --- a/firmware/core/src/core_internal.h
 +++ b/firmware/core/src/core_internal.h
-@@ -138,6 +138,12 @@ bool display_ask_input(const gadget_input_t *in);
+@@ -140,6 +140,12 @@ bool display_ask_input(const gadget_input_t *in);
  bool display_dismiss(void);                     /* CANCEL / swipe down: image, then card, then toast */
  bool display_tap(void);                         /* a tap hides the toast */
  
@@ -10821,13 +11026,13 @@ Change `firmware/core/CMakeLists.txt` exactly as this diff shows (`-` lines go, 
 - [ ] **Step 4: Run the tests**
 
 Run: `cmake --build build/host -j10 && ctest --test-dir build/host --output-on-failure -L "unit|vectors"`
-Expected: `100% tests passed, 0 tests failed out of 13`; `test_actions` prints `7 Tests 0 Failures 0 Ignored`.
+Expected: `100% tests passed, 0 tests failed out of 13`; `test_actions` prints `9 Tests 0 Failures 0 Ignored`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add firmware/core firmware/tests/test_actions.c firmware/tests/CMakeLists.txt
-git commit -m "firmware: gadget actions with hello limits and the built-in chime" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "firmware: gadget actions with hello limits, the built-in chime and events" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -10844,7 +11049,7 @@ git commit -m "firmware: gadget actions with hello limits and the built-in chime
 - Produces:
   - **Keys:** `gadget_key_find`, `core_ota_state`, and the tables `gadget_release_keys` (the empty sentinel, count 0; P2d adds r1) and `gadget_test_keys` (t1 when `GADGET_TEST_KEYS`, otherwise the sentinel).
   - **Module API:** `ota_init` (probation starts when `hal_ota_running_state()` is `PENDING_VERIFY`), `ota_on_msg` (`fw.offer`, `fw.commit`), `ota_on_binary`, `ota_event` (`OTA_WRITTEN`/`OTA_ERROR`), `ota_on_ready`, `ota_on_session_lost` and `ota_tick`.
-- **Offer checks, in the contract §2.13 order:** `busy` (also while a recording is live or a turn is in flight: Review Focus 2), `wrong_board`, `same_version`, `too_large`, `unknown_key`, `bad_sig`. The signature is checked over the text built with the gadget's own board id, and `sha256` must be 64 lowercase hex characters. An older signed version is accepted.
+- **Offer checks, in the contract §2.13 order:** `busy` (also while a recording is live or a turn is in flight: contract D22, Review Focus 2), `wrong_board`, `same_version`, `too_large`, `unknown_key`, `bad_sig`. The signature is checked over the text built with the gadget's own board id, and `sha256` must be 64 lowercase hex characters. An older signed version is accepted.
 - **Flow:**
   - `fw.ready`, then chunks written in order (otherwise `sequence`). `fw.progress` goes out at each 16 KiB boundary and at the end, using the durable `written` count.
   - `fw.commit` checks the size and the SHA-256 (`checksum` for either, so also for a commit that arrives before every offered byte), then calls `hal_ota_finalize` and `hal_ota_set_boot(version)`, and restarts 1 s later.
@@ -11508,7 +11713,7 @@ Change `firmware/core/src/core_internal.h` exactly as this diff shows (`-` lines
 ```diff
 --- a/firmware/core/src/core_internal.h
 +++ b/firmware/core/src/core_internal.h
-@@ -144,6 +144,16 @@ void actions_deinit(void);
+@@ -146,6 +146,16 @@ void actions_deinit(void);
  bool actions_on_msg(const gp_msg_t *m);         /* act -> exactly one act.result */
  const gp_action_decl_t *actions_decls(uint8_t *count);   /* for hello */
  
@@ -11686,10 +11891,10 @@ git commit -m "firmware: OTA state machine, key tables and probation" -m "Co-Aut
 **Interfaces:**
 - Consumes: the whole core API (Tasks 1–14); `gadget_linebuf_*` (Task 6).
 - Produces:
-  - **The `gadget-sim` command line** of contract §2.16: every flag, with exit codes 0, 1, 2 and 3. `@omb` lines go to stdout and logs to stderr; `--trace` prints `>> {json}` and `<< {json}`. Without `--headless` and without SDL (P2b), the simulator runs on the real clock with the null display and the stdin console.
-  - **The script grammar** of contract §2.16, with three additions (see "Contract deviations", items 2, 3 and 7): `expect <op>` matches the first frame with that op since the previous `expect` matched, including frames that crossed before the line was reached; `net_open [timeout_ms]` waits (5 s by default) for the gadget to ask for a connection; and in `net_text`, every `${turn}` becomes the `turn` of the last `voice.begin` or `say` the gadget sent, so a script can answer a turn although its prefix is random at every boot (contract §2.12). `net_text` fails with `no turn yet` before the gadget has sent either.
+  - **The `gadget-sim` command line** of contract §2.16: every flag, with exit codes 0, 1, 2 and 3. `@omb` lines go to stdout and logs to stderr; `--trace` prints `>> {json}` and `<< {json}`. Without `--headless` and without SDL (P2b), the simulator runs on the real clock with the null display and the stdin console (contract D26).
+  - **The script grammar** of contract §2.16, with the three additions of contract D23, D24 and D27: `expect <op>` matches the first frame with that op since the previous `expect` matched, including frames that crossed before the line was reached; `net_open [timeout_ms]` waits (5 s by default) for the gadget to ask for a connection; and in `net_text`, every `${turn}` becomes the `turn` of the last `voice.begin` or `say` the gadget sent, so a script can answer a turn although its prefix is random at every boot (contract §2.12). `net_text` fails with `no turn yet` before the gadget has sent either.
   - **The seams P2b builds on:** `sim_post_event` (thread-safe, deep copies), `sim_audio_use`, `sim_audio_file_backend` (WAV mic replayed from its start on each TALK; speaker drained in clock time into a WAV, appended to after a restart), the null `sim_display_*`, and `ui_stub.c`'s `ui_*`. P2b adds `sim_display_lvgl.c`, `sim_sdl.c` and `sim_audio_sdl.c` by editing only this task's `CMakeLists.txt`.
-  - **The state folder** (contract §4.6): `storage.json`, `otadata.json`, `slot0.bin` and `slot1.bin`, all written atomically: each is written to a temp name and renamed (an image goes to `slot<n>.bin.tmp` and is renamed by `hal_ota_finalize`; `hal_ota_abort` deletes the temp file). `otadata.json` gains one private field, `"booted": true`: a pending image that boots a second time without confirmation rolls back (Review Focus 3).
+  - **The state folder** (contract §4.6): `storage.json`, `otadata.json`, `slot0.bin` and `slot1.bin`, all written atomically: each is written to a temp name and renamed (an image goes to `slot<n>.bin.tmp` and is renamed by `hal_ota_finalize`; `hal_ota_abort` deletes the temp file). `otadata.json` gains the field `"booted": true` (contract D25): a pending image that boots a second time without confirmation rolls back (Review Focus 3).
   - **Restarts:** `execv` of the simulator's own path (`_NSGetExecutablePath` on macOS, `/proc/self/exe` on Linux) with the original arguments minus `--pair` and `--boot`, plus `--boot <n+1>`. `sim_display_deinit()` runs first.
   - **The clock:** `--host script` runs unpaced, so a 20 s wait takes milliseconds. A real host address (Task 16) paces each 10 ms tick to real time.
 - Task 15b adds the scripts that exercise all of this.
@@ -14111,19 +14316,22 @@ git commit -m "firmware: scripted simulator runs for every screen, OTA and rollb
 **Files:**
 - Modify: `firmware/cmake/deps.cmake` (wslay), `firmware/ports/sim/CMakeLists.txt` (link `wslay`), `firmware/ports/sim/sim_ws.c` (the real client), `firmware/tests/CMakeLists.txt` (the `e2e.*` tests), `package.json` (the `test:e2e` script, which contract §1.4 assigns to P2a)
 - Create: `firmware/tests/e2e/run.ts`
-- Test: `firmware/tests/e2e/enroll.txt`, `voice.txt`, `bargein.txt`, `ask.txt`, `ota.txt`, `rollback.txt` (CTest `e2e.<name>`, label `e2e`)
+- Test: `firmware/tests/e2e/enroll.txt`, `voice.txt`, `bargein.txt`, `bargein_after_done.txt`, `ask.txt`, `ota.txt`, `rollback.txt` (CTest `e2e.<name>`, label `e2e`)
 
 **Interfaces:**
 - Consumes: P1's fake host, `node tools/fake-host/src/main.ts --port 0 --code 123456 …` (contract §4.7). This plan relies on these parts of it:
   - **Events:** `listening {port}`, `enrolled`, `ready`, `rx`/`tx {msg}` (the runner accepts `msg` as an object or as a string), `turn {phase, outcome}`, `answer {id, option}`, `act.result {id, ok}`, `ota {phase, version}`, `ack {cmd, ok}`, `refused`.
   - **Commands:** `drop`, `ask`, `post`, `card`, `act`, `ota {image, version}` and `quit`.
-  - **Behavior:** the voice turn sequence of contract §4.7, and `--tone-ms`.
+  - **Behavior:** the voice turn sequence of contract §4.7, `--tone-ms`, and `--done-before-speech`. With that flag, `done ok` follows the final reply at once and the test tone comes after it, which is MausBot's usual order. A new turn then gets `speak.stop` for that tone before its first message.
   - It also consumes root `npm ci` (for `ws`).
 - Produces:
   - **The real client:** `hal_ws_*` for real hosts. It does a non-blocking `connect` (`FD_CLOEXEC`, `SO_NOSIGPIPE` or `MSG_NOSIGNAL`), then sends `GET /gadget` with `Sec-WebSocket-Protocol: openmausbot-gadget.1`, no `Origin` header and no extensions. It checks the 101 status, `Upgrade` and `Sec-WebSocket-Accept` (base64 of SHA-1 through `psa_hash_compute(PSA_ALG_SHA_1)`) and the subprotocol. Bytes that follow the 101 response go to wslay. The connect and upgrade time out after 5 s, the close handshake after 2 s, and binary messages over 8 KiB are dropped. Exactly one `GADGET_EV_WS_CLOSED` follows every open.
   - **The runner:** `firmware/tests/e2e/run.ts` with the scenario format in its header comment, and `npm run test:e2e`.
   - **The CI target** `-L e2e`.
-- Spec §10's simulator end-to-end list maps to scenarios: enroll → `enroll`; voice turn → `voice`; barge-in → `bargein`; ask/answer, post, card and action → `ask`; OTA → `ota`; forced rollback → `rollback`. The checks are protocol traffic plus `ui_model` state through `model` lines, never pixels.
+- Spec §10's simulator end-to-end list maps to scenarios: enroll → `enroll`; voice turn → `voice`; barge-in → `bargein` and `bargein_after_done`; ask/answer, post, card and action → `ask`; OTA → `ota`; forced rollback → `rollback`. The checks are protocol traffic plus `ui_model` state through `model` lines, never pixels.
+- Barge-in needs both scenarios, because the turn can end in either of two orders:
+  - `bargein` runs the fake host's default order, the speech and then `done`. TALK lands before `done`, so the gadget sends `stop`.
+  - `bargein_after_done` runs MausBot's usual order through `--done-before-speech`: spec §6.2 sends `done` on `turn.completed`, before the speech ends. Spec §5.4 says TALK after `done` only stops playback and starts listening. Before this scenario, Task 11's unit test `test_tap_after_done_only_stops_playback` was the only check of that order, and it never ran against P1's fake host.
 
 - [ ] **Step 1: Write the failing scenarios and the runner**
 
@@ -14482,6 +14690,37 @@ expect voice.begin
 expect voice.end
 ```
 
+Create `firmware/tests/e2e/bargein_after_done.txt`:
+
+```text
+# Barge-in after done, in MausBot's usual order (--done-before-speech): done ok
+# comes right after the final reply and the speech follows it (spec §6.2 sends
+# done on turn.completed), so `expect done` passes before `expect speak.begin`.
+# TALK during that speech stops playback and starts a new turn without a stop,
+# because the old turn already has its done (spec §5.4); the host stops its own
+# speech with speak.stop when the new voice.begin arrives.
+host-args --done-before-speech --tone-ms 3000
+mic tone 600
+speaker
+[host]
+await tx op=speak.stop
+[sim]
+expect ready
+talk_down
+wait 600
+talk_up
+expect voice.end
+expect done 15000
+expect speak.begin 10000
+wait 300
+talk_down
+expect voice.begin
+# stay connected until the host has stopped the old speech
+expect speak.stop
+[check]
+no-event rx op=stop
+```
+
 Create `firmware/tests/e2e/ask.txt`:
 
 ```text
@@ -14578,7 +14817,7 @@ Change `firmware/tests/CMakeLists.txt` exactly as this diff shows (`-` lines go,
 +if(GADGET_BUILD_SIM)
 +  find_program(GADGET_NODE node)
 +  if(GADGET_NODE)
-+    foreach(scenario enroll voice bargein ask ota rollback)
++    foreach(scenario enroll voice bargein bargein_after_done ask ota rollback)
 +      add_test(NAME e2e.${scenario}
 +               COMMAND ${GADGET_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/e2e/run.ts --sim $<TARGET_FILE:gadget-sim>
 +                       ${CMAKE_CURRENT_SOURCE_DIR}/e2e/${scenario}.txt)
@@ -14610,7 +14849,7 @@ Change `package.json` exactly as this diff shows (`-` lines go, `+` lines come; 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `npm ci && cmake -S firmware -B build/host && cmake --build build/host -j10 && node firmware/tests/e2e/run.ts --all`
-Expected: every scenario prints `FAIL <name>: no … within … ms`, with `this build has no WebSocket client; use --host script` in the simulator's stderr, and the run ends `0/6 scenarios passed`.
+Expected: every scenario prints `FAIL <name>: no … within … ms`, with `this build has no WebSocket client; use --host script` in the simulator's stderr, and the run ends `0/7 scenarios passed`.
 
 - [ ] **Step 3: Write the real client**
 
@@ -15039,10 +15278,10 @@ void sim_net_poll(uint32_t wait_ms) {
 - [ ] **Step 4: Run the scenarios and the whole suite**
 
 Run: `cmake --build build/host -j10 && npm run test:e2e`
-Expected: `PASS ask`, `PASS bargein`, `PASS enroll`, `PASS ota`, `PASS rollback`, `PASS voice` (about 20 s in all), then `6/6 scenarios passed`.
+Expected: `PASS ask`, `PASS bargein`, `PASS bargein_after_done`, `PASS enroll`, `PASS ota`, `PASS rollback`, `PASS voice` (about 25 s in all), then `7/7 scenarios passed`.
 
 Run: `ctest --test-dir build/host --output-on-failure -L "unit|vectors|e2e"`
-Expected: `100% tests passed, 0 tests failed out of 26`.
+Expected: `100% tests passed, 0 tests failed out of 27`.
 
 If a scenario fails, the runner prints the last simulator stdout and stderr lines and the fake host's events. Run a single scenario with `node firmware/tests/e2e/run.ts firmware/tests/e2e/voice.txt`, and add `sim-args --trace` to its header to see every frame.
 
@@ -15135,17 +15374,17 @@ rm -rf build/host && cmake -S firmware -B build/host -DCMAKE_BUILD_TYPE=Debug -D
   ctest --test-dir build/host --output-on-failure -L "unit|vectors|e2e"
 ```
 
-Expected: `0` (no warning or error lines), then `100% tests passed, 0 tests failed out of 26`. The labels split 19 `unit` (13 `core.*` + 6 `sim.*`), 1 `vectors` and 6 `e2e`.
+Expected: `0` (no warning or error lines), then `100% tests passed, 0 tests failed out of 27`. The labels split 19 `unit` (13 `core.*` + 6 `sim.*`), 1 `vectors` and 7 `e2e`.
 
 - [ ] **Step 2: Run the mbedTLS 4.2.0 leg**
 
 Run: `cmake -S firmware -B build/host-mbedtls4 -DCMAKE_BUILD_TYPE=Debug -DGADGET_WITH_LVGL=OFF -DGADGET_MBEDTLS_VERSION=4.2.0 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && cmake --build build/host-mbedtls4 -j10 && ctest --test-dir build/host-mbedtls4 --output-on-failure -L "unit|vectors|e2e"`
-Expected: `100% tests passed, 0 tests failed out of 26`.
+Expected: `100% tests passed, 0 tests failed out of 27`.
 
 - [ ] **Step 3: Run the sanitizers over everything, the simulator included**
 
 Run: `cmake -S firmware -B build/asan -DCMAKE_BUILD_TYPE=Debug -DGADGET_WITH_LVGL=OFF -DGADGET_SANITIZE=ON && cmake --build build/asan -j10 && ctest --test-dir build/asan --output-on-failure -L "unit|vectors|e2e"`
-Expected: `100% tests passed, 0 tests failed out of 26`, and no `AddressSanitizer` or `runtime error` text in the output.
+Expected: `100% tests passed, 0 tests failed out of 27`, and no `AddressSanitizer` or `runtime error` text in the output.
 
 - [ ] **Step 4: Run the gnu23 check on core (ESP-IDF 6's default standard), against both mbedTLS header sets**
 
@@ -15187,7 +15426,8 @@ Do not push, open a PR or merge. Report the branch `p2a-core` and the results ab
   - `gadget-sim` lists its sources directly in `add_executable`, so P2b's block can filter `sim_display_null.c` and `ui_stub.c` out of the target's `SOURCES`.
   - Draw ask buttons on `m->ask.options[i].rect`.
   - The `snapshot` script command already calls `sim_display_snapshot()`.
-  - `net_text` replaces every `${turn}` (with braces, not the `$turn` P2b's plan proposed) with the `turn` of the gadget's last `voice.begin` or `say`, so Thinking, Speaking and Reply can be snapshotted end to end on `--host script`; `sim_voice.txt` shows the sequence. P2b's fixture snapshots stay valid.
+  - `net_text` replaces every `${turn}` (contract D27; P2b's plan now spells it `${turn}` too and has closed its deviation 2) with the `turn` of the gadget's last `voice.begin` or `say`, so Thinking, Speaking and Reply can be snapshotted end to end on `--host script`; `sim_voice.txt` shows the sequence. P2b's fixture snapshots stay valid.
+  - Regenerate the `setup_bad_code` and `setup_device_limit` goldens on every board. Core now keeps the last challenge's `host_name` in the model after that connection closes (Task 8, `test_setup_keeps_the_challenge_host_name_after_bad_code`), which answers P2b's open question 4: both screens show the host name ("Omkar's computer" in P2b's script) on its own dim line above the device id. Only a new challenge, `host`, `host auto` and `forget` drop it; a new `pair` keeps it.
 - **P2c:**
   - Implement every `hal_*` except crypto. Deliver events on the core thread, and call `psa_crypto_init()` before `core_init()`.
   - The ESP-IDF branch of `firmware/core/CMakeLists.txt` lists every core source and the `CONFIG_GADGET_TEST_KEYS` block; correct it if the component manager needs a different `REQUIRES`.
@@ -15197,9 +15437,11 @@ Do not push, open a PR or merge. Report the branch `p2a-core` and the results ab
   - The console error texts and `@omb` field order are pinned in Tasks 6 and 10.
   - The simulator path for `AGENTS.md` is `build/host/ports/sim/gadget-sim`, and the end-to-end command is `npm run test:e2e`.
   - List cJSON 1.7.19 (MIT), mbedTLS (Apache-2.0), Unity 2.7.0 (MIT, test-only) and wslay 1.1.1 (MIT) in `THIRD_PARTY.md`.
-  - Do not document sending `event` in `AGENTS.md`: v1 core never sends it, and makers have no API for it (Contract deviations, item 9).
-  - `host auto` prints its `hosts` line once per run of misses, so the installer asks for an address once; a gadget that was paired before keeps browsing in the background (Contract deviations, item 8).
-- **P4b:** `fw.fail busy` also comes back while the person is recording or a turn is in flight. Surface it as "the gadget is busy; try again in a moment" (see Contract deviations, item 1).
+  - Document `gadget_event_send` in `AGENTS.md` (P2d Task 14, a "Send an event" paragraph under "Add an action"): the name follows the action-name rule; the data is at most 1 KiB once serialized; it returns `GADGET_ERR_BUSY` without a ready session and queues nothing; and events are informational, so MausBot only lists the last 10 to bots as `recent_events` (Contract deviations, item 9).
+  - `host auto` prints its `hosts` line once per run of misses, so the installer asks for an address once; a gadget that was paired before keeps browsing in the background (contract D28).
+  - `status` carries `host_name` as soon as a challenge has arrived, so it is there after `bad_code` or `device_limit` on a gadget that was never paired; `host`, `host auto` and `forget` drop it until the next challenge (Task 10).
+  - `device_limit` on `status` (contract §2.11, status rule 2; Tasks 8 and 10): `"pair":"error","error":"device_limit"` for the whole retry window, from the first `device_limit` until 120 s after the `pair` command. That includes the moments a retry is connecting, so the installer's and `omb_console.py`'s `device_limit` handling sees it on every poll. When the window closes, the gadget drops the code and a gadget that was never paired reports `"pair":"unpaired"` with no `error`. A `pairAndWait` timeout longer than 120 s therefore ends on `unpaired`, not on `device_limit`. Treat `unpaired` after a `device_limit` notice as the `device_limit` result, not as a timeout.
+- **P4b:** `fw.fail busy` also comes back while the person is recording or a turn is in flight. Surface it as "the gadget is busy; try again in a moment" (contract D22).
 
 **Not verifiable without hardware or other plans (and how each is covered):**
 
@@ -15224,28 +15466,31 @@ Do not push, open a PR or merge. Report the branch `p2a-core` and the results ab
 
 None of these renames or retypes anything in the contract. Each is an addition, or a decision the contract or the spec left open, listed for review.
 
-**Review gate (contract §0 item 2).** Items 1–4 and 6–8 change pinned behaviour, the script grammar or a pinned file format. The executor does not start the task that builds an item until Omkar has folded the item into `00-interfaces.md` §6 (as D22 onwards) or rejected it: item 8 gates Task 8, item 1 gates Task 14, and items 2, 3, 4, 6 and 7 gate Task 15a. Folding them in before this plan starts avoids the stops. Items 5 and 9 need no gate: item 5 stays within D3, and item 9 builds nothing.
+**Review gate (contract §0 item 2): cleared for items 1–4 and 6–8.** These items change pinned behaviour, the script grammar or a pinned file format, so each needed review before the task that builds it: item 8 before Task 8, item 1 before Task 14, and items 2, 3, 4, 6 and 7 before Task 15a. The cross-plan review folded all seven into `00-interfaces.md` §6: item 1 is D22, item 2 is D23, item 3 is D24, item 4 is D25, item 6 is D26, item 7 is D27 and item 8 is D28. Tasks 8, 14 and 15a therefore start without a stop. If §6 lacks one of these rows when its task begins, stop on that item as contract §0 item 2 says. Items 5 and 9 need no stop: item 5 stays within D3, and contract §2.10 already declares item 9's `gadget_event_send`, byte for byte as Task 1 copies it. If Omkar has declined item 9 when Task 13 begins, build Task 13 without it, as item 9 says.
 
-1. **`fw.fail busy` while talking.** On top of "an update already running", the gadget answers `busy` while a recording is live or a turn is in flight (Review Focus 2). P4b's Update flow should treat `busy` as "try again later".
-2. **The script `expect <op>`** matches the first such frame since the previous `expect` matched, including frames that crossed before the line was reached. This makes scripts independent of network timing. The contract text ("waits until a frame with that op crosses") reads as "from now on"; P2b's snapshot scripts behave the same either way.
-3. **The script `net_open [timeout_ms]`** waits up to `timeout_ms` (default 5 s) for the gadget to ask for a connection, instead of failing at once. Contract §2.16's grammar gives `net_open` no argument; `sim_handshake.txt` uses `net_open 3000` to wait out the 2 s reconnect backoff.
-4. **`otadata.json` gains `"booted": true`** (contract §4.6 format otherwise unchanged): a pending image that starts twice without confirmation rolls back, as the device's bootloader does.
+1. **`fw.fail busy` while talking** (contract D22). On top of "an update already running", the gadget answers `busy` while a recording is live or a turn is in flight (Review Focus 2). P4b's Update flow should treat `busy` as "try again later".
+2. **The script `expect <op>`** (contract D23) matches the first such frame since the previous `expect` matched, including frames that crossed before the line was reached. This makes scripts independent of network timing. The contract text ("waits until a frame with that op crosses") reads as "from now on"; P2b's snapshot scripts behave the same either way.
+3. **The script `net_open [timeout_ms]`** (contract D24) waits up to `timeout_ms` (default 5 s) for the gadget to ask for a connection, instead of failing at once. Contract §2.16's grammar gives `net_open` no argument; `sim_handshake.txt` uses `net_open 3000` to wait out the 2 s reconnect backoff.
+4. **`otadata.json` gains `"booted": true`** (contract D25; the §4.6 format is otherwise unchanged): a pending image that starts twice without confirmation rolls back, as the device's bootloader does.
 5. **More `@omb error` lines:** the console prints `@omb {"op":"error","cmd":"say","message":"not connected to MausBot"}` when `say` has no session, and `{"op":"error","cmd":"","message":"line too long"}` for an over-long line. These are additions in the spirit of contract D3.
-6. **Simulator additions:** CTest names `sim.<script>` (label `unit`); a real-clock console mode without `--headless` in builds without SDL; the default `--snapshot-dir firmware/tests/snapshots/<board>`. In the simulator, `host auto` resolves only in real-clock runs; headless runs pass `--host`.
-7. **The script's `${turn}`** (additive to contract §2.16 and D4). In `net_text`, every `${turn}` becomes the `turn` of the last `voice.begin` or `say` the gadget sent, as core's tap reports it to `main.c`; before the first one, `net_text` fails with `no turn yet`. Turn ids carry a per-boot random prefix (contract §2.12) that `--seed` does not fix, so without this a `--host script` run could never answer a turn, and Speaking and a normal Reply could not be reached headless, which D4 ("UI snapshots are deterministic without a socket") and spec §5.7 and §10 (headless snapshots of every screen) need. A script without `${turn}` behaves exactly as before. P2b's plan (Contract deviations, item 2) asked for this as `$turn`.
-8. **`host auto` on a paired gadget** (spec §5.6 against §4.3). Spec §5.6's "waits for `host <address>`" applies when no `host_id` is stored. A paired gadget whose MausBot is not among the services found keeps browsing with the §4.3 backoff, because its stored `host_id` picks its own MausBot as soon as it appears. It prints the `hosts` line only on the first miss of a run of misses (`ready`, `pair` and `host` start a new run), so P2d's installer prompts once.
-9. **`event` is never sent in v1** (spec §4.7: "informational in v1"). Core never sends `event`, and makers have no API to send one; `gp_encode_event` exists for the codec and its tests only. P2d's `AGENTS.md` should not document sending events. If makers should send them, the contract could adopt `gadget_status_t gadget_event_send(const char *name, const cJSON *data)` in `gadget_actions.h` (it sends `event` while the session is ready, and returns `GADGET_ERR_BUSY` otherwise), with a unit test in `test_actions.c`. This plan does not build it unless the contract adopts it.
+6. **Simulator additions** (contract D26): CTest names `sim.<script>` (label `unit`); a real-clock console mode without `--headless` in builds without SDL; the default `--snapshot-dir firmware/tests/snapshots/<board>`. In the simulator, `host auto` resolves only in real-clock runs; headless runs pass `--host`.
+7. **The script's `${turn}`** (contract D27, additive to §2.16 and D4). In `net_text`, every `${turn}` becomes the `turn` of the last `voice.begin` or `say` the gadget sent, as core's tap reports it to `main.c`; before the first one, `net_text` fails with `no turn yet`. Turn ids carry a per-boot random prefix (contract §2.12) that `--seed` does not fix, so without this a `--host script` run could never answer a turn, and Speaking and a normal Reply could not be reached headless, which D4 ("UI snapshots are deterministic without a socket") and spec §5.7 and §10 (headless snapshots of every screen) need. A script without `${turn}` behaves exactly as before. P2b's plan (Contract deviations, item 2) first asked for this as `$turn`; it now spells it `${turn}` and has closed that item. Its fixture snapshots stay valid.
+8. **`host auto` on a paired gadget** (contract D28; spec §5.6 against §4.3). Spec §5.6's "waits for `host <address>`" applies when no `host_id` is stored. A paired gadget whose MausBot is not among the services found keeps browsing with the §4.3 backoff, because its stored `host_id` picks its own MausBot as soon as it appears. It prints the `hosts` line only on the first miss of a run of misses (`ready`, `pair` and `host` start a new run), so P2d's installer prompts once.
+9. **`gadget_event_send`, so makers can send `event`** (contract §2.10; spec §4.7 and §7). Without it no firmware ever sends `event`, so the `recent_events` that P3a's hub keeps and P4a's `gadget_devices` lists would always be empty. `gadget_actions.h` declares `gadget_status_t gadget_event_send(const char *name, const cJSON *data);` (Task 1 copies it from §2.10), and Task 13 builds it in `actions.c` on `gp_encode_event`. The name follows the action-name rule (`GADGET_ERR_ARG`), and the data is at most 1 KiB once serialized compactly (`GADGET_ERR_LIMIT`). Without a ready session it returns `GADGET_ERR_BUSY` and queues nothing, and the name and size checks come first. Tests: `test_event_send_while_ready_and_busy_otherwise` and `test_event_send_checks_the_name_and_the_data_size` in `test_actions.c`. P2d's Task 14 documents it in `AGENTS.md`, as a "Send an event" paragraph under "Add an action" with a `docs.test.ts` assertion. The contract marks it "adopted only if Omkar accepts it". **If Omkar declines:**
+   - delete the declaration from Task 1's `gadget_actions.h`;
+   - in Task 13, drop `gadget_event_send`, `EVENT_DATA_MAX` and the two tests (`test_actions` then prints `7 Tests`, and the fail-first link misses only `gadget_action_register`), so core never sends `event` and `gp_encode_event` serves only the codec and its tests;
+   - P2d does not document events, and `recent_events` comes out of spec §7, contract §3.15's `GadgetDirectoryEntry` and P4a's Tasks 7 and 10, so no tool advertises a field that cannot fill.
 
 ## Self-review
 
 - **Spec coverage:**
   - §5.1 core layout and dependencies: Tasks 1–3, 7, 14.
   - §5.2 HAL, crypto adapter and threading: Tasks 1, 3, 7, 15a.
-  - §5.4 interaction: Tasks 9, 11, 12 (presses, swipes, barge-in, approvals on touch and buttons, the 0.6 s lock, the 60 s limit and countdown).
+  - §5.4 interaction: Tasks 9, 11, 12 (presses, swipes, barge-in, approvals on touch and buttons, the 0.6 s lock, the 60 s limit and countdown). Task 16 checks barge-in end to end in both orders: `bargein` (before `done`, so the gadget sends `stop`) and `bargein_after_done` (after `done` with P1's `--done-before-speech`, so playback stops and no `stop` is sent).
   - §5.6 console: Tasks 6, 10.
   - §5.7 headless simulator, every backend, OTA and re-exec: Tasks 15a, 15b, 16.
   - §4.2 identity: Task 7. §4.3 handshake and its reaction table: Task 8.
-  - §4.4: Tasks 9, 11. §4.5: Task 12. §4.6: Task 12. §4.7: Tasks 12, 13. §4.8: Task 14. §4.9 vectors: Task 4.
+  - §4.4: Tasks 9, 11, 16. §4.5: Task 12. §4.6: Task 12. §4.7: Tasks 12, 13. §4.8: Task 14. §4.9 vectors: Task 4.
   - §10's firmware-core, protocol and simulator end-to-end rows: Tasks 2–16, including every handshake error reaction in Task 8 (`proto_unsupported` among them).
   - Owned elsewhere:
     - LVGL UI, art, fonts, SDL window mode and snapshot goldens: P2b.

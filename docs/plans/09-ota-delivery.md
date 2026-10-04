@@ -4,22 +4,23 @@
 
 **Goal:** MausBot looks for official gadget firmware while a gadget is paired, shows **Update available** or **Custom build** on each gadget row in Settings → Remote access, and on a click downloads, verifies and streams the signed image to the gadget over its live session, showing progress until the gadget comes back on the new version.
 
-**Architecture:** Four new companion modules, Node built-ins only. `release-keys.ts` holds the trusted public keys. `releases.ts` fetches `manifest.json`, keeps only entries whose signature verifies, compares versions by SemVer and downloads images, checking size and SHA-256. `ota.ts` runs the host side of spec §4.8 on one `GadgetSessionHandle`: `fw.offer`, a 64 KiB window of 4 KiB chunks and `fw.commit`. `firmware.ts` ties them to P3a's hub and registry. It owns the check schedule, the Update button's refusals, the restart and rollback watch, `fw.installed`, and the `gadgetFirmware` block in the control port's `/state`. Two new loopback control routes back two new Electron IPC channels. The renderer adds pure helpers, a `GadgetUpdateCell` passed into P3a's `GadgetRow`, a release check when Remote access opens, and 1 s polling while an update runs. In the SDK, `tools/release/dev-release.ts` serves a test-signed release locally, so the whole path can be exercised against the simulator.
+**Architecture:** Four new companion modules, Node built-ins only. `release-keys.ts` holds the trusted public keys. `releases.ts` fetches `manifest.json`, keeps only entries whose signature verifies, compares versions by SemVer and downloads images, checking size and SHA-256. `ota.ts` runs the host side of spec §4.8 on one `GadgetSessionHandle`: `fw.offer`, a 64 KiB window of 4 KiB chunks and `fw.commit`. `firmware.ts` ties them to P3a's hub and registry. It owns the check schedule, the Update button's refusals, the restart and rollback watch, `fw.installed`, and the `gadgetFirmware` block in the control port's `/state`. Two new loopback control routes back two new Electron IPC channels. The renderer adds pure helpers, a `GadgetUpdateCell` passed into P3a's `GadgetRow`, a release check when Remote access opens, and 1 s polling while an update runs. In the SDK, `tools/release/dev-release.ts` serves a test-signed release locally, so the whole path can be exercised against the simulator. Its test, `tools/release/test/dev-release.test.ts`, is committed next to P2d's release tool tests, so the SDK CI jobs that run those run it too. P4b also appends one section, "MausBot path", to P2c's `docs/hardware-checklist.md` (contract §5.1). It is the committed home of the on-device checks that only MausBot can drive: P3b's voice checks, P4a's bot-tool checks and this plan's Update-button checks. P2c writes that file before the app plans exist, so without this section those checks would live only in hand-off reports and no release would run them.
 
 **Tech Stack:** TypeScript on Node ≥ 24 (type stripping in dev, plain `tsc` for the packaged companion), vitest 4.1, pnpm 10.33.0, Node `crypto` (P-256 ECDSA verify, SHA-256), global `fetch`, React 19 `renderToStaticMarkup` tests, Electron `node:test` + `vm` slice tests, oxlint 1.80. SDK tool: Node ≥ 22.18 type stripping, `node:test`, P1's `protocol/lib`.
 
 **Spec:** `/Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk/docs/specs/2026-10-04-openmausbot-gadget-design.md` (v1.1). This plan covers §8 on the MausBot side, the host side of §4.8, the §4.1 encodings it uses, the §6.1 control-port rows `POST /devices/:id/firmware-update` and `POST /firmware-updates/check`, the §6.4 Update / Custom build cell, §9's "A malicious image flashes the gadget" row on the host, and the §10 rows for companion, Desktop UI, end to end and hardware. The binding interface contract is `/Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk/docs/plans/00-interfaces.md`: §3.16 OTA delivery, §3.12 companion wiring, §3.13 control routes, §3.17 Electron, §3.18 Renderer, §3.19 test helpers, §3.1 env vars, §4.1 `manifest.json`, §4.4/§4.4.1 vectors and `protocol/lib`, §4.5 keys, §1.7 fixed values, §5.2 ownership. Amendments A17, A19, A24 and A37 are folded into spec v1.1.
 
 **Repos and branches:**
-- App: OpenMausBot. The worktree is `/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget`, or `/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota` when another plan holds the first one (Task 1 decides). Branch `feat/gadget-ota` is created from `feat/gadget-hub` (P3a).
-- SDK: worktree `/Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk-p4b`, branch `p4b-ota` created from `p2d-installer` (Task 12). It carries `tools/release/dev-release.ts`, and its test once Contract deviation 2 is approved.
+- App: OpenMausBot. Branch `feat/gadget-ota` is created from `feat/gadget-hub` (P3a). P4b normally works in its own worktree `/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota` and removes it at the end (Task 14). It takes the shared `/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget` only after whoever dispatched it has confirmed that P3a has finished (P3a's Task 19 hand-off) and that tree is clean on `feat/gadget-hub`. Task 1 decides, after it has checked P3a's work on the branch and before it creates or switches anything.
+- SDK: worktree `/Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk-p4b`, branch `p4b-ota` created from `p2d-installer` (Task 12). It carries `tools/release/dev-release.ts` and its test `tools/release/test/dev-release.test.ts`, both P4b's under contract §5.1, and the "MausBot path" section of P2c's `docs/hardware-checklist.md`, which contract §5.1 lets P4b append there.
 
 Line numbers are from OpenMausBot `origin/main` `6dd4403d8fbbbd5c17169724cb2a529f11d7543e`. P3a shifts some of them in `companion/src/control.ts`, `companion/src/index.ts`, `electron/*` and `src/components/*`, so every edit there also names the exact anchor text to find with `grep -n`.
 
 ## Global Constraints
 
 - Node ≥ 24: every app command runs after `export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"`. Inside the worktree `pnpm --version` must print `10.33.0`. If it does not, use `corepack pnpm@10.33.0 <args>` wherever this plan says `pnpm <args>` (contract §0 item 5).
-- The main checkout `/Users/omkar/Desktop/openmaus/OpenGrokBot` belongs to another session. Never checkout, stash, reset, edit or fetch there. `git worktree add` from it (contract §1.3) is the only allowed write. No `git fetch` anywhere.
+- The main checkout `/Users/omkar/Desktop/openmaus/OpenGrokBot` belongs to another session. Never checkout, stash, reset, edit or fetch there. `git worktree add` (Task 1) and `git worktree remove` of P4b's own worktree (Task 14), both from it (contract §1.3), are the only writing commands run against it. No `git fetch` anywhere.
+- The shared worktree `/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget` belongs to P3a until it has finished. P4b never switches its branch on its own judgement (Task 1 Step 3): a clean tree on `feat/gadget-hub` can be a running P3a between two of its commits.
 - Publishing belongs to Omkar: no push, no PR, no release, no workflow dispatch. Prepare both branches, run the tests and stop.
 - Original-work rule (spec §11): never open, fetch, quote or cite third-party gadget SDKs or voice-assistant firmware projects.
 - The companion "ships as plain `tsc` output with no `node_modules`. It stays dependency-free, and its code cannot import `shared/`" (spec §6.1). Companion code uses Node built-ins and relative `.ts` imports only, in erasable TypeScript syntax (contract §3.1).
@@ -45,7 +46,7 @@ These six inputs are implied by the spec but easy to miss. Each has a test in th
 3. **The new image never comes back, or rolls back** (probation fails, crash loop, power loss while restarting). The row says it went back to the old version, that the gadget has not come back, or that it came back on the new version without confirming it. It never sits on "Updating… 100%" forever. Tests: Task 6 "says the gadget went back when it returns on its old version", "fails when the gadget does not come back at all" and "says so when the gadget came back on the new version but never confirmed it". Task 8 "says the update did not stay when the gadget comes back on its old version".
 4. **A click that cannot start an update**: a second Update while one runs, an offline gadget, a custom build, a gadget already current or ahead, or no OTA slot. Each refusal comes with a reason and never opens a second stream. The reason reaches the row. Tests: Task 6 "refuses %s" and "refuses a second Update while the first is running". Task 7 "passes a refusal through as {error, code} with its status". Task 9 "a refused update carries the sidecar's code and sentence". Task 11 "shows the companion's reason when a click did not start an update".
 5. **The release server is unreachable, has no release yet, or answers garbage** (offline Mac, the 404 before the first release, a 503, invalid or huge JSON, a timeout). The companion never throws, the last good manifest stays, and nothing is fetched at all while no gadget is paired. Tests: Task 4 "never throws, and keeps the last good manifest through every kind of failure". Task 6 "never fetches while no gadget is paired". Task 8 "never asks the release server while no gadget is paired".
-6. **The restarted gadget is ready before its old session closes.** An ESP32 restart sends no FIN (P2a's core calls `hal_restart()` 1 s after `fw.commit`, and P2c's `hal_restart()` is `esp_restart()` with no WebSocket close), so P3a's hub closes the old session only when the new one replaces it, and the new session's `ready` can reach the firmware service while the old session still waits after `fw.commit`. The outcome comes from the new session in either order: back on the old version is "came back on …", `fw.installed` is "Updated to …", and the old session's late close never overwrites either or starts the "has not come back" timer. A failed update also stops showing once the gadget comes back on other firmware (a USB flash, say). Tests: Task 6 "says the update did not stay when the gadget is ready on its old version before its old session closes", "keeps Updated when the restarted gadget confirms before its old session closes" and "forgets a failed update once the gadget comes back on other firmware". Task 8 "keeps Updated when the restarted gadget connects before its old connection closes" (P3a's `replace()` path). Hardware: Task 14 checklist steps 1 and 3 (11 minutes later, past the restart timeout, the row has not turned into "has not come back").
+6. **The restarted gadget is ready before its old session closes.** An ESP32 restart sends no FIN (P2a's core calls `hal_restart()` 1 s after `fw.commit`, and P2c's `hal_restart()` is `esp_restart()` with no WebSocket close), so P3a's hub closes the old session only when the new one replaces it, and the new session's `ready` can reach the firmware service while the old session still waits after `fw.commit`. The outcome comes from the new session in either order: back on the old version is "came back on …", `fw.installed` is "Updated to …", and the old session's late close never overwrites either or starts the "has not come back" timer. A failed update also stops showing once the gadget comes back on other firmware (a USB flash, say). Tests: Task 6 "says the update did not stay when the gadget is ready on its old version before its old session closes", "keeps Updated when the restarted gadget confirms before its old session closes" and "forgets a failed update once the gadget comes back on other firmware". Task 8 "keeps Updated when the restarted gadget connects before its old connection closes" (P3a's `replace()` path). Hardware: rows U1 and U3 of the "MausBot path" section that Task 12 adds to `docs/hardware-checklist.md` (11 minutes later, past the restart timeout, the row has not turned into "has not come back").
 
 ## Verified while writing this plan (2026-10-04; review fixes re-verified 2026-10-05)
 
@@ -57,19 +58,27 @@ All of this ran on this Mac under `/private/tmp`, with Node 24.14.1 (and 22.22.3
 - **Electron edits** were applied to copies of `origin/main`'s `companion.mjs`, `main.mjs`, `preload.cjs` and `preload.node-test.mjs`. **14 node tests passed**: the new `companion-firmware.node-test.mjs` (4), the unchanged `companion-browser.node-test.mjs` (2, proving the helper placement) and `preload.node-test.mjs` with its new case. `node --check electron/main.mjs` passed and oxlint was clean. Objects made inside a `vm` context fail `assert.deepEqual` on their prototype, so those tests compare a JSON round-trip.
 - **Renderer**: `gadgets.ts`'s P4b helpers and `GadgetUpdateCell.tsx` ran with stand-in types and an English-only `t()`. **20 tests passed**, `tsc` with the app's renderer options (`tsconfig.json`) was clean, and so was oxlint.
 - **`en.json`** round-trips exactly through `JSON.stringify(value, null, 2) + "\n"`. So Task 11's insertion script yields a diff of exactly the seven added lines, and it refuses to run without P3a's anchor key.
-- **SDK `dev-release.ts`** ran against P1's `protocol/lib/{encoding,identity,verify,version}.ts`, copied verbatim from `01-protocol-and-fake-host.md`. Its 4 tests passed on Node 22.22.3 and 24.14.1, also when run from a scratch mirror of `protocol/lib`, `keys/test-t1.*` and `tools/release` under `/private/tmp` (Task 12's place for the test until Contract deviation 2 is approved).
+- **SDK `dev-release.ts`** ran against P1's `protocol/lib/{encoding,identity,verify,version}.ts` and `keys/test-t1.*`, copied verbatim from `01-protocol-and-fake-host.md` into a copy of the SDK layout under `/private/tmp`. Re-verified on 2026-10-05 with the test at `tools/release/test/dev-release.test.ts`. CI's command `node --test "tools/release/test/*.test.ts"`, run from the root, passed its 4 tests on Node 22.22.3 and 24.14.1. P2d's `tools/release/tsconfig.json` (its `include` has `test/*.ts`) type-checked it clean with TypeScript 5.9.3 and `@types/node` 24.19.1, the versions `site/package.json` pins. Without `dev-release.ts` the run fails with `ERR_MODULE_NOT_FOUND`. With `key_id` `t2` in the tool, 2 tests fail within 2 s. With SIGINT ignored, the command test times out after 30 s and `node --test` exits 1. Before the command test killed its child in `t.after`, the `t2` case hung `node --test` until the spawned server was killed by hand.
 - **Across the two repos**, a live `dev-release` server was fed to the companion's real `createReleaseChecker`. It refuses the t1-signed manifest without `OMB_GADGET_TRUST_TEST_KEY=1`. With the variable set, it offers 1.0.1 to a gadget on 1.0.0, offers nothing to `0.0.0-dev`, and downloads the image byte for byte.
 - **Numeric identifiers past 2^53** (patched 2026-10-05, after this plan was written). P1's final review added two `versions.json` cases, `big-numeric-prerelease` (`1.0.0-rc.9007199254740993` > `1.0.0-rc.9007199254740992`) and `big-numeric-core` (`9007199254740993.0.0` > `9007199254740992.0.0`). The comparators as first written here (`.split(".").map(Number)` and `Number(a) - Number(b)`) turn each pair into the same double and return 0, so both vendored-vector tests (Task 3's `releases.test.ts`, Task 10's `gadgets.update.test.ts`) would fail. Task 3's `compareVersions` and Task 10's `compareFirmwareVersions` now keep the core as digit strings and compare every numeric identifier with `compareNumeric`, which works like `protocol/lib/version.ts`'s `cmpNumeric`: leading zeros dropped, then the longer string is larger, then code-unit order. Both code blocks, taken from this file, were run against the SDK's real `protocol/vectors/versions.json` (16 `compare` cases, both ways round) on Node 22.22.3 and all passed. The code as first written failed exactly the four big-numeric checks.
 - **Node's built-in WebSocket client** may send only close code 1000 or 3000–4999 (`close(1001)` throws `InvalidAccessError`), so the hub test closes with the default.
+- **The "MausBot path" section** (2026-10-05). P2c's `docs/hardware-checklist.md` was extracted verbatim from `04-firmware-esp32-boards-ota.md` Task 15 Step 1 into a scratch git repository, and Task 12 Step 8's script inserted Task 12 Step 7's text. The diff was 136 added lines and 0 deleted. All 89 table rows had their header's cell count, P2c's sixteen Task 15 Step 2 keys still matched, the 17 rows V1–V5, T1–T6 and U1–U6 were there, and the file had no `github.com` link, no TBD/TODO/FIXME and no whitespace error. A second run refused. The column check failed on a row given one cell too many. The bench-action C for T4–T6 compiled clean with Apple clang 21 (`-std=c11 -Wall -Wextra -Werror`) against stand-in declarations of `gadget_actions.h` (contract §2.10), FreeRTOS and `esp_log.h`. The build commands follow P2c's project file: `-D GADGET_TEST_KEYS=1` only outside `build/<board>`, and the app image at `build/<dir>/openmausbot-gadget.bin`.
+- **Task 1's worktree steps and the release-tools gate** (2026-10-05). Task 1 Step 2's gate, run against a scratch git repository with a stand-in `feat/gadget-hub`, printed `P3a deliverables present on feat/gadget-hub` with every item there. With one file, one export and one anchor removed it printed `MISSING src/components/PairGadgetPanel.tsx`, `protocol.ts exports 11 of the 12 names`, `NO 'pairingBot' in electron/preload.cjs` and `STOP`, and exited 1, under both bash and zsh. Step 3's block made `OpenGrokBot-gadget-ota` on a first run, printed `reusing …` on a rerun, and checked the existing branch out again after its worktree was removed. Step 4 fast-forwarded a stale `feat/gadget-ota` once the hub had gained a commit. The Conventions lines found the worktree by its branch. Task 12 Step 9's gate, `site/node_modules/.bin/tsc -p tools/release/tsconfig.json` (P2d's file, TypeScript 5.9.3, `@types/node` 24.19.1) then `node --test "tools/release/test/*.test.ts"`, passed on `dev-release.ts` and `test/dev-release.test.ts` taken from this file, with P1's `protocol/lib` taken from `01-protocol-and-fake-host.md`. A type error put into `dev-release.ts` on purpose made `tsc` fail with TS2322.
 
-Not verified here, because each needs P3a's code, P2a's simulator or hardware: `ota.hub.test.ts` and `firmware-wiring.test.ts` (Task 8), `CompanionSection.firmware.test.ts` and the `CompanionSection.tsx`/`PhoneSetupFlow.tsx` edits in place (Tasks 10–11), the simulator end to end (Task 13) and every hardware check (Task 14). Task 14 runs all of the code checks.
+Not verified here, because each needs P3a's code, P2a's simulator or hardware: `ota.hub.test.ts` and `firmware-wiring.test.ts` (Task 8), `CompanionSection.firmware.test.ts` and the `CompanionSection.tsx`/`PhoneSetupFlow.tsx` edits in place (Tasks 10–11), the simulator end to end (Task 13), the ESP-IDF builds of the checklist's bench images, and every hardware check (the "MausBot path" rows, run by Omkar). Task 14 runs all of the code checks.
 
 ## Out of scope (owned by another plan)
 
 - **Firmware side of §4.8.** Offer checks in order, contiguous chunk writes, `fw.progress` every 16 KiB, size and SHA-256 at commit, `hal_ota_*`, the 5-minute probation and `fw.installed` after the first `ready` belong to **P2a** (core and simulator) and **P2c** (ESP32 `esp_ota_*`, the rollback sdkconfig, `check-size.sh`).
 - **Release production.** `release.yml`, the signing job, `manifest.json` and `install.json` production, `SHA256SUMS`, prereleases, `pages.yml`, `keys/release-r1.*`, `docs/release-keys.md`, `keys_release.c` and the release-CI key-table check belong to **P2d** (key files committed by Omkar). This plan only consumes the manifest format of contract §4.1.
 - **Hub and session.** The hub, sessions, `allocStream`, the WebSocket drain-aware sender, the registry's `firmware` update on every `hello` (`noteGadgetHello`), the gadget rows without the Update cell, the three pairing IPC channels and the test helpers `connectTestGadget`/`startFakeHarness` belong to **P3a**.
-- The fake host's `ota` command (P1). The hardware checklist document `docs/hardware-checklist.md` (P2c). This plan's on-device checks are listed in Task 14 for Omkar to run or for P2c's file to absorb.
+- The fake host's `ota` command (P1).
+- **The hardware checklist `docs/hardware-checklist.md`** is P2c's, except one section. P2c writes it before the app plans exist, so it covers only the fake-host paths. Contract §5.1 lets P4b append one section, "MausBot path", on `p4b-ota`, plus that section's rows in the result table (Task 12 Steps 7–9). The section holds:
+  - P3b's five voice checks (V1–V5, from P3b Task 13 Step 6 item 5);
+  - P4a's six bot-tool checks (T1–T6, from P4a Task 13 Step 5);
+  - this plan's six Update-button checks (U1–U6), with build commands that match P2c's project file.
+
+  P4b changes no other line of the file; Task 12 Step 8 checks that its diff only adds lines.
 
 ## Spec coverage
 
@@ -91,13 +100,14 @@ Not verified here, because each needs P3a's code, P2a's simulator or hardware: `
 | §6.4 gadget row: **Update** or "Custom build" | 11 |
 | §9 "A malicious image flashes the gadget": the host offers only images signed by an embedded release key | 4 (the firmware's own check is P2a/P2c's) |
 | §10 Companion / Desktop UI: control-route and Electron node tests, a `renderToStaticMarkup` test for the gadget row | 7, 9, 11 |
-| §10 End to end: the simulator against a development MausBot, an update | 13 (companion-level, automated) + 14 (full app, manual) |
-| §10 Hardware: OTA, power loss during OTA, rollback | 14 (checklist) |
-| Contract §3.16 SDK part: `tools/release/dev-release.ts` | 12 |
+| §10 End to end: the simulator against a development MausBot, an update | 12 (the dev-release tool it relies on, tested in SDK CI) + 13 (companion-level, automated) + 14 (full app, manual) |
+| §10 Hardware: OTA, power loss during OTA, rollback, through MausBot's Update button | 12 (rows U1–U6 of `docs/hardware-checklist.md`, section "MausBot path"), run by Omkar before a release |
+| §10 Hardware: a voice turn and an approval through MausBot (P3b's and P4a's on-device checks, which no committed checklist held) | 12 (rows V1–V5 and T1–T6 of the same section) |
+| Contract §3.16 SDK part: `tools/release/dev-release.ts`, and its test `tools/release/test/dev-release.test.ts`, which P2d's `site` job (`ci.yml`) and `assemble` job (`release.yml`) run | 12 |
 
 ## Contract notes (additive; no pinned item changed)
 
-These are additions under contract §0 item 3. Nothing pinned is renamed, retyped or moved. Two edits fall outside P4b's pinned points, so they are listed under "Contract deviations" at the end of this plan and wait for review there (contract §0 item 2).
+These are additions under contract §0 item 3. Nothing pinned is renamed, retyped or moved. One edit falls outside P4b's pinned points, so it is listed under "Contract deviations" at the end of this plan and waits for review there (contract §0 item 2).
 
 1. `parseManifest(json, options)` takes an extra optional `allowTestKey?: boolean`. It admits `key_id` `t1`, and the checker sets it only when t1 is among its keys.
 2. `createReleaseChecker` takes an extra optional `log`. `check()` also verifies every board entry's signature and drops entries that do not verify, so an unverifiable release never shows Update available. `download()` still verifies before it downloads.
@@ -106,8 +116,9 @@ These are additions under contract §0 item 3. Nothing pinned is renamed, retype
 5. The `no_update` refusal code also covers "this gadget has no `caps.ota`, or a slot smaller than the image". None of the five pinned codes fits better.
 6. `src/lib/gadgets.ts` gains P4b-private helpers next to the pinned `isCustomBuild` and `updateCellState`: `compareFirmwareVersions`, `availableUpdate`, `updatePercent` and `hasActiveGadgetUpdate`.
 7. The bridge methods are typed `Promise<unknown>` as pinned. The `c.act(...)` call site casts to `Promise<CompanionState>`.
-8. P4b-private test files: `companion/test/gadget/helpers/test-release.ts` and `companion/test/gadget/helpers/ota-fakes.ts`. (The SDK's `tools/release/dev-release.test.ts` is Contract deviation 2.)
+8. P4b-private test files: `companion/test/gadget/helpers/test-release.ts` and `companion/test/gadget/helpers/ota-fakes.ts`. (The SDK's `tools/release/test/dev-release.test.ts` is not private: contract §5.1 lists it for P4b, next to `dev-release.ts`.)
 9. Besides the pinned "`installed` entries expire after 10 min", a `failed` entry is dropped when the gadget comes back on firmware other than the one the update started from. The firmware service keeps that starting version, and the session the image streamed on, in a private map; nothing else reads them.
+10. `docs/hardware-checklist.md` stays P2c's. Contract §5.1 lets P4b append exactly one section, "MausBot path", on `p4b-ota`. P4b inserts it before P2c's "Result table" heading, so the table stays last, and adds four rows at the end of that table. P2c's checks, row numbers and wording are untouched. Its rows are prefixed V, T and U, so they never collide with P2c's numbers or its B and O rows.
 
 ## File Structure
 
@@ -137,16 +148,22 @@ These are additions under contract §0 item 3. Nothing pinned is renamed, retype
 | `src/components/CompanionSection.firmware.test.ts` | create | both wiring jobs |
 | `src/locales/en.json` | modify | seven `remote.gadgets.*` keys |
 
-**SDK (`$SDKWT`):** `tools/release/dev-release.ts` (create, P4b-owned) and its test `tools/release/dev-release.test.ts` (Contract deviation 2: it sits in P2d's folder, so it is committed only once that item is approved; until then it runs from a scratch mirror under `/private/tmp`).
+**SDK (`$SDKWT`):**
+
+| Path | Action | Responsibility |
+|---|---|---|
+| `tools/release/dev-release.ts` | create (P4b, contract §5.1) | sign an image with t1, write `manifest.json`, serve both on 127.0.0.1 |
+| `tools/release/test/dev-release.test.ts` | create (P4b, contract §5.1) | the tool's 4 tests. P2d's `site` job (`ci.yml`) and `assemble` job (`release.yml`) already run `node --test "tools/release/test/*.test.ts"`, and `site` also type-checks `test/*.ts` through `tools/release/tsconfig.json`, so no new job id and no `package.json` script is needed |
+| `docs/hardware-checklist.md` | modify (P2c's file; P4b appends one section, contract §5.1) | the "MausBot path" section, V1–V5 voice, T1–T6 bot tools and U1–U6 Update button, before P2c's result table, and four rows at the end of that table |
 
 ## Conventions for every task
 
-Every app shell starts like this. `WT` is the worktree Task 1 chose: P4b's own `OpenGrokBot-gadget-ota` exists only when Task 1 had to make it.
+Every app shell starts like this. `WT` is the worktree Task 1 Step 3 chose: P4b's own `OpenGrokBot-gadget-ota` by default, or the shared `OpenGrokBot-gadget` when the dispatcher handed it over. The lines find whichever worktree has `feat/gadget-ota` checked out and refuse to go on anywhere else, so no task edits or commits in P3a's or another plan's worktree.
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
-export WT=$(test -d /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota && echo /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota || echo /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget)
-cd "$WT"
+export WT=$(git -C /Users/omkar/Desktop/openmaus/OpenGrokBot worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} $0=="branch refs/heads/feat/gadget-ota"{print w}')
+test -n "$WT" && cd "$WT" && test "$(git branch --show-current)" = feat/gadget-ota || { echo "STOP: no worktree has feat/gadget-ota checked out; run Task 1 first"; exit 1; }
 ```
 
 Commit with `git add <files> && git commit -m "<subject>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`.
@@ -165,66 +182,103 @@ Commit with `git add <files> && git commit -m "<subject>" -m "Co-Authored-By: Cl
   - `connectTestGadget`, `startFakeHarness`.
   - `companion/test/fixtures/gadget-vectors/{firmware.json,versions.json}`.
   - `src/lib/gadgets.ts` `isGadget`; `GadgetRow`'s `updateCell` prop; P3a's `remote.gadgets.*` keys.
-- Produces: `$WT` on branch `feat/gadget-ota` with dependencies installed and a green baseline.
+- Produces: `$WT`, a worktree on `feat/gadget-ota` that contains `feat/gadget-hub`, with dependencies installed and a green baseline.
 
 - [ ] **Step 1: See what exists**
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
 APP=/Users/omkar/Desktop/openmaus/OpenGrokBot
+git -C "$APP" worktree list
 git -C "$APP" rev-parse --verify --quiet refs/heads/feat/gadget-hub >/dev/null && echo "hub branch: yes" || echo "hub branch: no"
 git -C "$APP" rev-parse --verify --quiet refs/heads/feat/gadget-ota >/dev/null && echo "ota branch: yes" || echo "ota branch: no"
 test -d /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget && git -C /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget status --short --branch | head -5 || echo "no OpenGrokBot-gadget worktree"
 ```
 
-Expected: one line per question. On 2026-10-04 neither branch existed yet. **If `hub branch: no`, stop: P3a (`06-mausbot-companion-hub.md`) has not run.**
+Expected: the worktree list, then one line per question. On 2026-10-04 neither branch existed yet. **If `hub branch: no`, stop: P3a (`06-mausbot-companion-hub.md`) has not run.**
 
-- [ ] **Step 2: Put P4b on `feat/gadget-ota`**
+- [ ] **Step 2: Gate on P3a's work, on the branch, before creating or switching anything**
 
-If `/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget` exists, is clean (`git status --porcelain` prints nothing) and is on `feat/gadget-hub` or `feat/gadget-ota`, use it:
-
-```bash
-cd /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget
-git rev-parse --verify --quiet refs/heads/feat/gadget-ota >/dev/null && git switch feat/gadget-ota || git switch -c feat/gadget-ota feat/gadget-hub
-export WT=/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget
-```
-
-Otherwise another plan holds it, so make P4b's own worktree (contract §1.3) and use it for every later task:
+This reads `feat/gadget-hub` with `git cat-file` and `git show`. It creates no branch and no worktree, and it switches nothing, so it is safe to run while P3a may still be working. Only P3a creates `feat/gadget-hub` and `/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget` (contract §1.3).
 
 ```bash
+export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
 APP=/Users/omkar/Desktop/openmaus/OpenGrokBot
-git -C "$APP" rev-parse --verify --quiet refs/heads/feat/gadget-ota >/dev/null \
-  && git -C "$APP" worktree add /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota feat/gadget-ota \
-  || git -C "$APP" worktree add -b feat/gadget-ota /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota feat/gadget-hub
-export WT=/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota
-```
-
-Expected: `git -C "$WT" branch --show-current` prints `feat/gadget-ota`.
-
-- [ ] **Step 3: Gate on P3a's deliverables**
-
-```bash
-cd "$WT"
+HUB=feat/gadget-hub
+git -C "$APP" rev-parse --verify --quiet "refs/heads/$HUB" >/dev/null || { echo "STOP: P3a not started (no $HUB)"; exit 1; }
+missing=0
 for f in companion/src/gadget/protocol.ts companion/src/gadget/enroll.ts companion/src/gadget/session.ts companion/src/gadget/hub.ts \
          companion/test/gadget/helpers/gadget-client.ts companion/test/gadget/helpers/fake-harness.ts \
          companion/test/fixtures/gadget-vectors/firmware.json companion/test/fixtures/gadget-vectors/versions.json \
          src/lib/gadgets.ts src/components/GadgetRow.tsx src/components/PairGadgetPanel.tsx; do
-  test -f "$f" || echo "MISSING $f"
+  git -C "$APP" cat-file -e "$HUB:$f" 2>/dev/null || { echo "MISSING $f"; missing=1; }
 done
-grep -cE "export (function|const) (encodeFwChunk|firmwareText|verifyP256|decodePubkey|isCanonicalBase64|FW_CHUNK_BYTES|FW_WINDOW_BYTES|FW_READY_TIMEOUT_MS|BOARD_ID_RE|SHA256_HEX_RE|RELEASE_VERSION_RE|BinaryKind)\b" companion/src/gadget/protocol.ts
-grep -c "onSessionReady" companion/src/gadget/hub.ts
-grep -cE "enrollGadget|gadgets\(\)" companion/src/devices.ts
-grep -c "updateCell" src/components/GadgetRow.tsx
-grep -c "export function isGadget" src/lib/gadgets.ts
-grep -c "pairingBot" electron/preload.cjs
-grep -c '"remote.gadgets.pairedToast"' src/locales/en.json
-grep -c "createGadgetHub" companion/src/index.ts
-grep -cE "export (async )?function connectTestGadget" companion/test/gadget/helpers/gadget-client.ts
+on() { git -C "$APP" show "$HUB:$1" 2>/dev/null; }
+n=$(on companion/src/gadget/protocol.ts | grep -cE "export (function|const) (encodeFwChunk|firmwareText|verifyP256|decodePubkey|isCanonicalBase64|FW_CHUNK_BYTES|FW_WINDOW_BYTES|FW_READY_TIMEOUT_MS|BOARD_ID_RE|SHA256_HEX_RE|RELEASE_VERSION_RE|BinaryKind)\b")
+[ "$n" = 12 ] || { echo "protocol.ts exports $n of the 12 names"; missing=1; }
+need() { on "$1" | grep -qE -e "$2" || { echo "NO '$2' in $1"; missing=1; }; }
+need companion/src/gadget/hub.ts "onSessionReady"
+need companion/src/devices.ts "enrollGadget|gadgets\(\)"
+need src/components/GadgetRow.tsx "updateCell"
+need src/lib/gadgets.ts "export function isGadget"
+need electron/preload.cjs "pairingBot"
+need src/locales/en.json '"remote.gadgets.pairedToast"'
+need companion/src/index.ts "createGadgetHub"
+need companion/test/gadget/helpers/gadget-client.ts "export (async )?function connectTestGadget"
+[ "$missing" = 0 ] && echo "P3a deliverables present on $HUB" || { echo "STOP: P3a is not finished on $HUB; nothing was created or switched"; exit 1; }
 ```
 
-Expected: no `MISSING` line. The protocol count is `12` (one line per name). Every other count is `1` or more. **If anything is missing, stop: P3a is not finished on `feat/gadget-hub`.** Do not build P4b on an incomplete hub. If the vectors are the only thing missing, P3a's last task (vendoring P1's vectors) is still blocked on P1.
+Expected: `P3a deliverables present on feat/gadget-hub`. **On any `STOP`, `MISSING`, `NO` or `protocol.ts exports` line, stop here and report it: P3a is not finished on `feat/gadget-hub`.** Nothing has been created or switched at this point. Do not build P4b on an incomplete hub, and never add P3a's files yourself. If the vectors are the only thing missing, P3a's Task 18 (vendoring P1's vectors) is still blocked on P1.
 
-- [ ] **Step 4: Install and take a baseline**
+- [ ] **Step 3: Choose the worktree**
+
+By default P4b works in its own worktree (contract §1.3), so it never moves the shared worktree's branch while P3a, P3b or P4a may still be using it:
+
+```bash
+APP=/Users/omkar/Desktop/openmaus/OpenGrokBot
+OWN=/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota
+# Where feat/gadget-ota is already checked out, if anywhere (a rerun of this plan).
+WT=$(git -C "$APP" worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} $0=="branch refs/heads/feat/gadget-ota"{print w}')
+if [ -n "$WT" ]; then
+  echo "reusing $WT"
+elif [ -e "$OWN" ]; then
+  echo "STOP: $OWN exists but is not on feat/gadget-ota; report it"; exit 1
+elif git -C "$APP" rev-parse --verify --quiet refs/heads/feat/gadget-ota >/dev/null; then
+  git -C "$APP" worktree add "$OWN" feat/gadget-ota && WT=$OWN
+else
+  git -C "$APP" worktree add -b feat/gadget-ota "$OWN" feat/gadget-hub && WT=$OWN
+fi
+echo "WT=$WT"
+```
+
+Expected: `Preparing worktree (new branch 'feat/gadget-ota')` and `WT=/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota` on a first run, or `reusing …` on a rerun. On `STOP`, report it.
+
+Take the shared `/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget` instead only when all three of these hold, and only on a first run (no `feat/gadget-ota` branch yet):
+1. Whoever dispatched this plan (the orchestrator, or Omkar) has confirmed that P3a has finished, its Task 19 hand-off included.
+2. `git -C /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget branch --show-current` prints `feat/gadget-hub`.
+3. `git -C /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget status --porcelain` prints nothing.
+
+Then, in place of the block above, run `git -C /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget switch -c feat/gadget-ota feat/gadget-hub`, and `WT` is `/Users/omkar/Desktop/openmaus/OpenGrokBot-gadget` (contract §1.3 has the app plans take turns there). A clean tree on `feat/gadget-hub` is not enough on its own. P3a commits after every task, so its tree is clean between tasks, and switching it then would put a running P3a's next commits on `feat/gadget-ota`. Without the confirmation, use the block above.
+
+- [ ] **Step 4: Make sure `feat/gadget-ota` contains P3a's latest work**
+
+Step 2 checked `feat/gadget-hub`, and a `feat/gadget-ota` left by an earlier run can predate P3a's last commits:
+
+```bash
+cd "$WT"
+if git merge-base --is-ancestor feat/gadget-hub HEAD; then
+  echo "feat/gadget-ota contains feat/gadget-hub"
+elif [ -z "$(git rev-list feat/gadget-hub..HEAD)" ] && [ -z "$(git status --porcelain)" ]; then
+  git merge --ff-only feat/gadget-hub && echo "fast-forwarded a stale feat/gadget-ota (no commits of its own) to feat/gadget-hub"
+else
+  echo "STOP: feat/gadget-ota has commits of its own but lacks part of feat/gadget-hub; report it"; exit 1
+fi
+git branch --show-current
+```
+
+Expected: one of the first two messages, then `feat/gadget-ota`. On `STOP`, report it: rebasing P4b's commits is Omkar's call.
+
+- [ ] **Step 5: Install and take a baseline**
 
 ```bash
 cd "$WT"
@@ -3977,14 +4031,18 @@ git commit -m "feat(gadget): Update and Custom build on gadget rows in Remote ac
 
 ---
 
-### Task 12: SDK: `tools/release/dev-release.ts`
+### Task 12: SDK: `tools/release/dev-release.ts` and the MausBot path checks
 
 **Files (SDK):**
 - Create: `tools/release/dev-release.ts` (P4b-owned, contract §5.1)
-- Test: `tools/release/dev-release.test.ts`. This is Contract deviation 2: contract §5.1 gives the rest of `tools/release/` to P2d. Until the contract lists the test for P4b, it lives in a scratch mirror under `/private/tmp` and is not committed (Step 1 decides where).
+- Modify: `docs/hardware-checklist.md` (P2c's file). Contract §5.1 lets P4b append one section, "MausBot path", with its rows in the result table, on `p4b-ota`. Nothing else in the file changes. Steps 7–8 write and check it, and Step 9 commits it with `dev-release.ts`.
+- Test: `tools/release/test/dev-release.test.ts` (P4b-owned, contract §5.1; the rest of `tools/release/`, including `test/helpers.ts` and the other tests, is P2d's). It is committed on `p4b-ota`. CI already runs it: P2d's `site` job in `ci.yml` and the `assemble` job in `release.yml` both run `node --test "tools/release/test/*.test.ts"` on Node 24, and `site` then runs `site/node_modules/.bin/tsc -p tools/release/tsconfig.json`, whose `include` is `["*.ts", "test/*.ts"]`. No new job id (contract §1.6) and no root `package.json` script (P1's) is needed.
 
 **Interfaces:**
-- Consumes P1's `protocol/lib` (contract §4.4.1): `b64Encode`, `b64DecodeCanonical`, `firmwareText`, `signP256(privateKeyHex, text): Uint8Array`, `verifyP256`, `publicKeyFromPrivate` and `isCustomBuild`, plus `keys/test-t1.key.hex` and `keys/test-t1.pub.b64`.
+- Consumes P1's `protocol/lib` (contract §4.4.1): `b64Encode`, `b64DecodeCanonical`, `firmwareText`, `signP256(privateKeyHex, text): Uint8Array`, `verifyP256`, `publicKeyFromPrivate` and `isCustomBuild`, plus `keys/test-t1.key.hex` and `keys/test-t1.pub.b64`, all read from the checkout by relative path.
+- Consumes P2d's CI (contract §1.6 job `site`, `release.yml` job `assemble`) and `tools/release/tsconfig.json`, unchanged.
+- Consumes P2c's `docs/hardware-checklist.md` (on `p2d-installer`, from `p2c-esp32`): its "## Result table" heading, the table's header `| Check | amoled-175c | amoled-175 | lcd-154 | devkit |`, rows 11 (pairing) and O1–O7, and P2c's build rules (`idf.py -B build/<board> -D GADGET_BOARD=<board> -D SDKCONFIG=build/<board>/sdkconfig [-D PROJECT_VER=<v>]`; `-D GADGET_TEST_KEYS=1` is refused in `build/<board>`; the app image is `<build dir>/openmausbot-gadget.bin`; `PROJECT_VER` defaults to `0.0.0-dev`). It also consumes the on-device checks of P3b Task 13 Step 6 item 5 and P4a Task 13 Step 5, the strings this plan's row shows (`FW_FAIL_MESSAGES`, `firmware.ts`, the seven `remote.gadgets.*` keys), P3a's "Read pushes aloud" setting, P4a's tool names and image sizes, and core's `gadget_action_register` (contract §2.10).
+- Produces (contract §5.1): the "MausBot path" section of `docs/hardware-checklist.md`, which has rows V1–V5 (voice), T1–T6 (bot tools) and U1–U6 (Update button), and four result-table rows.
 - Produces (contract §3.16):
   - The command `node tools/release/dev-release.ts --image <bin> --board <id> --version <v> --out <dir> [--port 0]`. It writes `<dir>/manifest.json` and `<dir>/v<v>/openmausbot-gadget-<board>-<v>.bin` and serves exactly those two paths at `http://127.0.0.1:<port>/`.
   - Exports `parseArgs`, `buildManifest`, `startDevRelease`, `assetPath`, `IMAGE_MAX`, `BOARD_ID_RE`.
@@ -3999,26 +4057,20 @@ git -C "$SDK" rev-parse --verify --quiet refs/heads/p4b-ota >/dev/null \
   || git -C "$SDK" worktree add -b p4b-ota /Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk-p4b p2d-installer
 export SDKWT=/Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk-p4b
 cd "$SDKWT"
-for f in protocol/lib/encoding.ts protocol/lib/identity.ts protocol/lib/verify.ts protocol/lib/version.ts keys/test-t1.key.hex keys/test-t1.pub.b64; do test -f "$f" || echo "MISSING $f"; done
+for f in protocol/lib/encoding.ts protocol/lib/identity.ts protocol/lib/verify.ts protocol/lib/version.ts keys/test-t1.key.hex keys/test-t1.pub.b64 tools/release/tsconfig.json site/package-lock.json docs/hardware-checklist.md; do test -f "$f" || echo "MISSING $f"; done
+echo "MausBot path sections: $(grep -c '^## MausBot path$' docs/hardware-checklist.md)"
 test -e tools/release/dev-release.ts && echo "dev-release already exists" || true
-# Where the test lives (Contract deviation 2): in the SDK once the contract lists it for P4b, otherwise
-# in a scratch mirror of the three folders it reads. Later steps read the choice back from the .where file.
-if grep -q "dev-release.test.ts" /Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk/docs/plans/00-interfaces.md; then
-  DRT="$SDKWT"
-else
-  DRT=/private/tmp/p4b-dev-release-test
-  rm -rf "$DRT" && mkdir -p "$DRT/tools/release" "$DRT/protocol" "$DRT/keys"
-  cp -R protocol/lib "$DRT/protocol/lib" && cp keys/test-t1.key.hex keys/test-t1.pub.b64 "$DRT/keys/"
-  printf '{ "type": "module" }\n' > "$DRT/package.json"
-fi
-echo "$DRT" > /private/tmp/p4b-dev-release-test.where; echo "dev-release test lives in $DRT"
+test -e tools/release/test/dev-release.test.ts && echo "dev-release test already exists" || true
+# The test needs no CI edit: P2d's jobs already run every tools/release/test/*.test.ts and type-check test/*.ts.
+grep -cF 'node --test "tools/release/test/*.test.ts"' .github/workflows/ci.yml .github/workflows/release.yml
+grep -cF '"test/*.ts"' tools/release/tsconfig.json
 ```
 
-Expected: `p2d: yes`, then `Preparing worktree …`, no `MISSING` line, and `dev-release test lives in /private/tmp/p4b-dev-release-test` (or in `$SDKWT` once deviation 2 is approved). **If `p2d: no`, stop this task:** the contract (§1.3) branches `p4b-ota` from `p2d-installer`. The app tasks do not depend on it.
+Expected: `p2d: yes`, then `Preparing worktree …`, no `MISSING` line, `MausBot path sections: 0`, then `.github/workflows/ci.yml:1`, `.github/workflows/release.yml:1` and `1`. A `MISSING docs/hardware-checklist.md` means P2c's Task 15 is not on `p2d-installer`: do Steps 2–6, skip Steps 7–8, commit without the checklist in Step 9, and report it. `MausBot path sections: 1` means the section is already committed on `p4b-ota`, so skip Steps 7–8. **If `p2d: no`, stop this task:** the contract (§1.3) branches `p4b-ota` from `p2d-installer`. The app tasks do not depend on it. **If any count is `0`, stop and report it.** A workflow `0` means P2d's `site` or `assemble` job no longer runs `tools/release/test/*.test.ts`, so the test would run in no CI job. A tsconfig `0` means CI no longer type-checks it. Do not edit P2d's workflows or tsconfig.
 
 - [ ] **Step 2: Write the failing test**
 
-`$DRT/tools/release/dev-release.test.ts`, with `DRT=$(cat /private/tmp/p4b-dev-release-test.where)`. Its imports are relative, so it runs the same in the SDK and in the mirror:
+`$SDKWT/tools/release/test/dev-release.test.ts`. It sits beside P2d's release tool tests, so CI picks it up with them. Everything it uses comes from the checkout by relative path: `../dev-release.ts`, P1's `protocol/lib`, and the test key. The tool it starts signs with `keys/test-t1.key.hex`, and the test verifies that signature against `keys/test-t1.pub.b64`. The command test kills its child in `t.after` and has a 30 s timeout. Without them, a failed assertion leaves the spawned server running, and `node --test` waits for it: on CI, until the job's own time limit.
 
 ```ts
 // SPDX-License-Identifier: Apache-2.0
@@ -4031,13 +4083,13 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { b64DecodeCanonical } from "../../protocol/lib/encoding.ts";
-import { firmwareText } from "../../protocol/lib/identity.ts";
-import { verifyP256 } from "../../protocol/lib/verify.ts";
-import { IMAGE_MAX, parseArgs, startDevRelease, type Manifest } from "./dev-release.ts";
+import { b64DecodeCanonical } from "../../../protocol/lib/encoding.ts";
+import { firmwareText } from "../../../protocol/lib/identity.ts";
+import { verifyP256 } from "../../../protocol/lib/verify.ts";
+import { IMAGE_MAX, parseArgs, startDevRelease, type Manifest } from "../dev-release.ts";
 
-const T1_PUB = b64DecodeCanonical(readFileSync(new URL("../../keys/test-t1.pub.b64", import.meta.url), "utf8").trim())!;
-const TOOL = fileURLToPath(new URL("./dev-release.ts", import.meta.url));
+const T1_PUB = b64DecodeCanonical(readFileSync(new URL("../../../keys/test-t1.pub.b64", import.meta.url), "utf8").trim())!;
+const TOOL = fileURLToPath(new URL("../dev-release.ts", import.meta.url));
 
 function workdir(imageBytes: Uint8Array): { dir: string; image: string } {
   const dir = mkdtempSync(join(tmpdir(), "dev-release-"));
@@ -4092,11 +4144,13 @@ test("refuses an empty or oversized image before it listens", async () => {
   }
 });
 
-test("the command prints the manifest URL and the companion environment, and exits 2 on bad flags", async () => {
+test("the command prints the manifest URL and the companion environment, and exits 2 on bad flags", { timeout: 30_000 }, async (t) => {
   const { dir, image } = workdir(new Uint8Array(randomBytes(64)));
   const child = spawn(process.execPath, [TOOL, "--image", image, "--board", "lcd-154", "--version", "1.0.1", "--out", join(dir, "out")], {
     stdio: ["ignore", "pipe", "pipe"],
   });
+  // A failed assertion must not leave the server running: node --test would wait for it (CI runs this file).
+  t.after(() => void child.kill("SIGKILL"));
   let stdout = "";
   const printed = new Promise<string>((done) => {
     child.stdout.on("data", (chunk) => {
@@ -4122,7 +4176,7 @@ test("the command prints the manifest URL and the companion environment, and exi
 
 - [ ] **Step 3: Run it to see it fail**
 
-Run: `node --test "$(cat /private/tmp/p4b-dev-release-test.where)/tools/release/dev-release.test.ts"`
+Run: `cd "$SDKWT" && node --test tools/release/test/dev-release.test.ts`
 Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `tools/release/dev-release.ts`.
 
 - [ ] **Step 4: Write `$SDKWT/tools/release/dev-release.ts`**
@@ -4272,34 +4326,252 @@ if (process.argv[1] && realpathSync(resolve(process.argv[1])) === fileURLToPath(
 }
 ```
 
-- [ ] **Step 5: Run it on both supported Node lines**
+- [ ] **Step 5: Run it on both supported Node lines, then as P2d's `site` job does**
 
 ```bash
 cd "$SDKWT"
-DRT=$(cat /private/tmp/p4b-dev-release-test.where)
-[ "$DRT" = "$SDKWT" ] || cp tools/release/dev-release.ts "$DRT/tools/release/dev-release.ts"
-node --version && node --test "$DRT/tools/release/dev-release.test.ts"
-"$HOME/.nvm/versions/node/v24.14.1/bin/node" --test "$DRT/tools/release/dev-release.test.ts"
+node --version && node --test tools/release/test/dev-release.test.ts
+"$HOME/.nvm/versions/node/v24.14.1/bin/node" --test tools/release/test/dev-release.test.ts
+# The site job's release-tools steps, on Node 24 as in CI: every release tool test, then the type check.
+export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
+(cd site && npm ci) && node --test "tools/release/test/*.test.ts" \
+  && site/node_modules/.bin/tsc -p tools/release/tsconfig.json && echo release-tools-typecheck-ok
 ```
 
-Expected: the default `node` is v22.22.3 on this Mac, and both runs end with `# pass 4` / `ℹ pass 4` and `fail 0`. In the mirror the tool signs with the mirror's copy of `keys/test-t1.key.hex`, which is the same file.
+Expected: the default `node` is v22.22.3 on this Mac. Both single-file runs end with `# pass 4` / `ℹ pass 4` and `fail 0`. The glob run covers P2d's release tool tests and these 4, and ends with `fail 0`. Then `release-tools-typecheck-ok` prints. The tool signs with the checkout's `keys/test-t1.key.hex`, the file CI checks out too. If the glob run fails only in P2d's tests, the failure is not P4b's: compare it with `p2d-installer` before you investigate.
 
 - [ ] **Step 6: Check that the protocol tests and vectors are unaffected**
 
 Run: `npm ci && npm test && npm run vectors:check`
 Expected: P1's suites pass and `vectors:check` prints no diff.
 
-- [ ] **Step 7: Commit (SDK)**
+- [ ] **Step 7: Write the MausBot path section**
+
+Write `/private/tmp/p4b-mausbot-path.md` with exactly this text, ending in one newline. Step 8 inserts it into `docs/hardware-checklist.md`. These are the on-device checks no committed checklist held before:
+- V1–V5 are P3b's voice checks (P3b Task 13 Step 6 item 5): 16/24 kHz pitch and underruns, the push gap and the padded last frame, the silence gate, barge-in and the 60 s utterance, and Voice is off.
+- T1–T6 are P4a's six bot-tool checks (P4a Task 13 Step 5).
+- U1–U6 are this plan's update checks.
+
+The U build commands follow P2c's project file. Test keys come from `-D GADGET_TEST_KEYS=1` in their own `-B` directory, because the project refuses it in `build/<board>`; there is no `sdkconfig` override. Versions are plain release versions, not `-dev`, because MausBot never offers an update to a custom build. The served image is `<build dir>/openmausbot-gadget.bin`.
+
+````markdown
+## MausBot path
+
+The checks above use the fake host. These run the same board against MausBot
+itself: real speech-to-text and voices (V1–V5), a bot's gadget tools (T1–T6)
+and the **Update** button (U1–U6). Run them on each board before a release,
+and after a change to MausBot's gadget voice, tools or update code. Record
+them in the result table at the end.
+
+What you need, besides the parts above:
+
+- MausBot on this Mac with **Remote access** on, and the gadget paired from
+  Settings → Remote access → **Pair a gadget** (row 11) to a bot whose engine
+  can use tools.
+- For V1–V5: a voice in that bot's voice settings, and speech-to-text in
+  MausBot (dictation allowed to use Speech Recognition on this Mac, or an
+  ElevenLabs key).
+- For U1–U5: Node 22.18 or later, run from the repository root.
+
+### Voice (every board)
+
+| # | Check | How | Expected |
+|---|---|---|---|
+| V1 | Speech rate and gaps | Hold TALK and ask for a long spoken answer ("Tell me a two-minute story"). Repeat for each voice provider you have set up | The reply plays at the right pitch, a normal voice that is neither slowed down nor high-pitched: 16 kHz on amoled-175c, amoled-175 and lcd-154, 24 kHz on the devkit. No gaps or stutters (MausBot sends 0.5 s ahead and the gadget buffers 1 s). The last word ends without a click (the last 40 ms frame is padded with silence) |
+| V2 | Spoken push after a reply | Turn on **Read pushes aloud** on the gadget's row. Give its bot a routine that runs a minute from now with a short prompt; just before it runs, ask by voice for a long spoken answer | The routine's push is spoken after the reply, with a short pause; the reply's last syllables are not cut off. If they are, MausBot's `SPEECH_GAP_MS` (300 ms, `companion/src/gadget/speech.ts`) needs raising: note the board |
+| V3 | Silence gate | Hold TALK and ask a question at arm's length in a normal voice. Then whisper one. Then hold TALK, say nothing and let go | The normal and the whispered questions both come back as heard text and get an answer; the silent one ends with "Didn't catch that". If a spoken question ends with "Didn't catch that", the board's mic level does not clear MausBot's silence gate (a peak of 200, about -44 dBFS, `SILENCE_PEAK` in `server/routes/stt.ts`): note the board |
+| V4 | Barge-in, and a full 60 s question | Press TALK while a reply is playing. Then hold TALK and keep talking for the whole 60 s | Playback stops at once and listening starts. The 60 s recording sends itself after the countdown, comes back as heard text and gets an answer |
+| V5 | Voice is off | Remove the voice from the bot's voice settings, then ask two questions by voice. Set the voice again afterwards | The first reply shows a "Voice is off" card for about 8 s next to its text; the second reply is text only, with no card |
+
+### Bot tools (every board)
+
+T1–T3 run on a normal build. T4–T6 need two bench actions, added by a local
+edit that is never committed. In `firmware/ports/esp32/main/main.c`, add
+`#include "gadget_actions.h"` and these two functions above `gadget_task()`:
+
+```c
+static bool bench_confirm(const cJSON *args, cJSON *data, char *error, size_t error_cap) {
+  (void)args; (void)data; (void)error; (void)error_cap;
+  ESP_LOGI("bench", "bench.confirm ran");
+  return true;
+}
+
+static bool bench_hang(const cJSON *args, cJSON *data, char *error, size_t error_cap) {
+  (void)args; (void)data; (void)error; (void)error_cap;
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(1000)); /* never answers (T6) */
+  }
+}
+```
+
+and, in `gadget_task()` directly after the `core_init(&cfg)` check:
+
+```c
+  if (gadget_action_register("bench.confirm", "Bench check: log one line.", NULL, GADGET_RISK_CONFIRM, bench_confirm) != GADGET_OK ||
+      gadget_action_register("bench.hang", "Bench check: never answers.", NULL, GADGET_RISK_SAFE, bench_hang) != GADGET_OK) {
+    ESP_LOGE("bench", "bench actions not registered");
+  }
+```
+
+From `firmware/ports/esp32/`, build and flash it in its own directory, so
+`build/<board>` stays a normal build:
+
+```
+idf.py -B build/<board>-mb-actions -D GADGET_BOARD=<board> -D SDKCONFIG=build/<board>-mb-actions/sdkconfig -p /dev/cu.usbmodem* build flash monitor
+```
+
+Afterwards undo the edit (`git restore firmware/ports/esp32/main/main.c`) and
+flash the normal build again.
+
+| # | Check | How | Expected |
+|---|---|---|---|
+| T1 | Device list | Ask the bot which gadgets it can use | It lists this board with its screen, its image size (300×300 on amoled-175c and amoled-175, 200×200 on lcd-154, 280×200 on the devkit), its battery (not on the devkit) and its actions: `chime`, and on the bench build also `bench.confirm` and `bench.hang` |
+| T2 | Card | Ask the bot to show a card for 10 s whose body has accents and an emoji ("Café ☕ is ready"). Then ask for a card that stays until it is dismissed | Title and body are readable, the accents are kept and the emoji is dropped. The first card goes away after 10 s; the second stays until you dismiss it (swipe down or CANCEL) |
+| T3 | Image | In the bot's chat, attach a 600×400 PNG and then a JPEG photo, and ask the bot to show each on the gadget | Each arrives scaled to fit, not stretched, with the right colours and orientation (red stays red, not blue: RGB565 byte order) |
+| T4 | Safe and confirm actions | Bench build. Ask the bot to run `chime`, then `bench.confirm`. Deny the card, then ask again and Allow | `chime` plays at once with no approval card. `bench.confirm` shows an approval card on the desktop and on the gadget. After Deny nothing runs; after Allow the monitor prints `bench.confirm ran` once |
+| T5 | Changed action | Bench build. Ask for `bench.confirm` and leave its card open. Unplug the gadget, change `"Bench check: log one line."` to another sentence, flash it with the command above, let it reconnect, then Allow on the desktop | The bot is told the action changed, and the monitor prints no `bench.confirm ran` |
+| T6 | Action that never answers | Bench build. Ask the bot to run `bench.hang` | After about 15 s the bot says the gadget did not answer within 15 seconds. The gadget stays stuck by design: press reset or replug it |
+
+### Firmware update (U1–U6 on amoled-175c, U1–U4 on lcd-154 and devkit)
+
+MausBot offers an update only for a release signed by a key it trusts, and
+never to a custom build. So these images trust the test key, like O1–O7's,
+but carry plain release versions (no `-dev`); `tools/release/dev-release.ts`
+signs 1.0.1 with the test key and serves it from this Mac. They are for your
+bench only: never publish them, and finish with a normal build on the board.
+Build them from `firmware/ports/esp32/`, each in its own directory: the
+project refuses `-D GADGET_TEST_KEYS=1` in `build/<board>`, and a
+`PROJECT_VER` given there would stick to every later build there. The third
+command flashes 1.0.0:
+
+```
+idf.py -B build/<board>-mb-1.0.0 -D GADGET_BOARD=<board> -D SDKCONFIG=build/<board>-mb-1.0.0/sdkconfig -D GADGET_TEST_KEYS=1 -D PROJECT_VER=1.0.0 build
+idf.py -B build/<board>-mb-1.0.1 -D GADGET_BOARD=<board> -D SDKCONFIG=build/<board>-mb-1.0.1/sdkconfig -D GADGET_TEST_KEYS=1 -D PROJECT_VER=1.0.1 build
+idf.py -B build/<board>-mb-1.0.0 -D GADGET_BOARD=<board> -D SDKCONFIG=build/<board>-mb-1.0.0/sdkconfig -D GADGET_TEST_KEYS=1 -D PROJECT_VER=1.0.0 -p /dev/cu.usbmodem* flash monitor
+```
+
+In a second terminal, from the repository root, serve 1.0.1 (it runs until
+Ctrl-C):
+
+```
+node tools/release/dev-release.ts --image firmware/ports/esp32/build/<board>-mb-1.0.1/openmausbot-gadget.bin --board <board> --version 1.0.1 --out /tmp/omb-dev-release --port 18900
+```
+
+Quit MausBot and start it from a terminal with two variables: the first
+points it at this release, the second makes it trust the test key. Use the
+path of the MausBot build under test:
+
+```
+OMB_GADGET_MANIFEST_URL=http://127.0.0.1:18900/manifest.json OMB_GADGET_TRUST_TEST_KEY=1 /Applications/OpenMausBot.app/Contents/MacOS/OpenMausBot
+```
+
+Pair the gadget on 1.0.0 (row 11) and open Settings → Remote access: its
+row shows **Update available** and a button **Update to 1.0.1**. Before U2,
+U3 and U4, flash the 1.0.0 image again (the third command); the pairing
+survives. U5 flashes an image with the same version and no test key:
+
+```
+idf.py -B build/<board>-mb-release-keys -D GADGET_BOARD=<board> -D SDKCONFIG=build/<board>-mb-release-keys/sdkconfig -D PROJECT_VER=1.0.0 -p /dev/cu.usbmodem* build flash monitor
+```
+
+| # | Check | How | Expected |
+|---|---|---|---|
+| U1 | Update over Wi-Fi | Click **Update to 1.0.1** | "Updating… N%" rises; the gadget restarts and its `@omb` boot line shows `"fw":"1.0.1"`; the row reads "Updated to 1.0.1" and its firmware line 1.0.1; the pairing survives. 11 minutes later, past MausBot's 10-minute restart timeout, the row has no "Update failed" line: "Updated to 1.0.1" has gone and the firmware line still reads 1.0.1 (an ESP32 restart does not close its connection, so MausBot sees the new one before the old one ends) |
+| U2 | Power loss while sending | Click Update and unplug the gadget at about 50 % | The row shows "Update failed: The gadget stopped responding during the update." (or "…disconnected during the update." if you plug it back in within 35 s). After power returns the gadget boots 1.0.0, and a new Update completes |
+| U3 | Power loss while restarting | Click Update and unplug within 2 s after the progress reaches 100 % | After power returns the gadget either reaches 1.0.1 ("Updated to 1.0.1"), or boots 1.0.0 and the row says it "came back on 1.0.0". Either way, 11 minutes later the row does not say it "has not come back": it still says "came back on 1.0.0", or it has no "Update failed" line and the firmware line reads 1.0.1 |
+| U4 | Probation rollback | Click Update, turn Remote access off the moment the progress reaches 100 %, wait 6 minutes, then turn it on | The gadget is back on 1.0.0, because it could not reach MausBot within the 5-minute probation, and the row shows Update available again |
+| U5 | Release key only | Flash U5's image (the command above), keep 1.0.1 served, and click Update | The gadget refuses the offer (`fw.fail`, code `unknown_key`) and the row reads "Update failed: The gadget does not trust the key this update is signed with." |
+| U6 | Official path, once two official releases exist | Install release N with the browser installer, start MausBot normally (no variables) | The row shows Update available for release N+1, and the update completes |
+
+Afterwards stop the release server, quit MausBot and start it normally, and
+flash the normal build (`build/<board>`, as in O7) so no test-key image stays
+on the board.
+````
+
+- [ ] **Step 8: Insert it before the result table, and check the file**
 
 ```bash
 cd "$SDKWT"
-git add tools/release/dev-release.ts
-if [ "$(cat /private/tmp/p4b-dev-release-test.where)" = "$SDKWT" ]; then git add tools/release/dev-release.test.ts; fi
-git commit -m "feat(release): dev-release, a local test-signed release for OTA testing" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+cat > /private/tmp/p4b-checklist-insert.cjs <<'EOF'
+// node p4b-checklist-insert.cjs <section.md> <checklist.md>: put the section before "## Result table"
+// and its rows at the end of the result table. Refuses anything it does not expect.
+const fs = require("node:fs");
+const [sectionFile, file] = process.argv.slice(2);
+const section = fs.readFileSync(sectionFile, "utf8");
+const lines = fs.readFileSync(file, "utf8").split("\n");
+if (lines.includes("## MausBot path")) throw new Error("the MausBot path section is already there");
+const results = lines.flatMap((line, i) => (line.startsWith("## Result table") ? [i] : []));
+if (results.length !== 1) throw new Error(`expected one "## Result table" heading, found ${results.length}`);
+const at = results[0];
+let last = at + 1;
+while (last < lines.length && !lines[last].startsWith("|")) last++;
+if (lines[last] !== "| Check | amoled-175c | amoled-175 | lcd-154 | devkit |") throw new Error("the result table header changed");
+while (last + 1 < lines.length && lines[last + 1].startsWith("|")) last++;
+const rows = [
+  "| V1–V5 (MausBot path) | | | | |",
+  "| T1–T6 (MausBot path) | | | | |",
+  "| U1–U4 (MausBot path; amoled-175c, lcd-154, devkit) | | | | |",
+  "| U5–U6 (MausBot path; amoled-175c) | | | | |",
+];
+lines.splice(last + 1, 0, ...rows);
+lines.splice(at, 0, ...section.replace(/\n+$/, "").split("\n"), "");
+fs.writeFileSync(file, lines.join("\n"));
+console.log(`MausBot path: ${section.split("\n").length} section lines and ${rows.length} result rows added`);
+EOF
+cat > /private/tmp/p4b-checklist-columns.cjs <<'EOF'
+// node p4b-checklist-columns.cjs <checklist.md>: every table row has as many cells as its header, outside code fences.
+const fs = require("node:fs");
+const lines = fs.readFileSync(process.argv[2], "utf8").split("\n");
+let fence = false, header = 0, bad = 0, rows = 0;
+lines.forEach((line, i) => {
+  if (line.startsWith("```")) fence = !fence;
+  if (fence || !line.startsWith("|")) { header = 0; return; }
+  const cells = line.split("|").length - 2;
+  if (!header) header = cells;
+  else if (cells !== header) { bad++; console.log(`line ${i + 1}: ${cells} cells, header has ${header}`); }
+  rows++;
+});
+console.log(`${rows} table rows, ${bad} with the wrong number of cells`);
+process.exit(bad ? 1 : 0);
+EOF
+node /private/tmp/p4b-checklist-insert.cjs /private/tmp/p4b-mausbot-path.md docs/hardware-checklist.md
+node /private/tmp/p4b-checklist-columns.cjs docs/hardware-checklist.md
+for k in 'Boot log' 'Touch' 'PWR' 'Mic level' 'Speaker' 'Battery' 'latch' 'Reflash keeps pairing' 'Installer reinstall' 'Pair' 'TALK button' 'Approval' 'Update' 'Power loss while receiving' 'Probation timeout' 'ui/README.md'; do grep -q "$k" docs/hardware-checklist.md || echo "MISSING $k"; done; echo "P2c keys checked"
+for r in V1 V2 V3 V4 V5 T1 T2 T3 T4 T5 T6 U1 U2 U3 U4 U5 U6; do grep -q "^| $r |" docs/hardware-checklist.md || echo "MISSING row $r"; done; echo "MausBot path rows checked"
+head -n 1 docs/hardware-checklist.md
+git grep -n 'github.com' -- docs/hardware-checklist.md; echo "no third-party project links above"
+git grep -n -E 'TBD|TODO|FIXME' -- docs/hardware-checklist.md; echo "no placeholders above"
+git diff --check -- docs/hardware-checklist.md && echo "no whitespace errors"
+git diff --numstat -- docs/hardware-checklist.md
+```
+
+Expected, in order:
+- `MausBot path: 132 section lines and 4 result rows added`;
+- `89 table rows, 0 with the wrong number of cells`: P2c's 62 and the 27 this step adds, header and separator lines included;
+- `P2c keys checked` and `MausBot path rows checked`, with no `MISSING` line (P2c's own Task 15 Step 2 keys still match);
+- `<!-- SPDX-License-Identifier: Apache-2.0 -->`;
+- `no third-party project links above`, `no placeholders above` and `no whitespace errors`, with nothing printed before them;
+- `136	0	docs/hardware-checklist.md`: 136 lines added and none removed, so P2c's checks are untouched.
+
+The row count depends on P2c's file. If P2c changed its tables since its plan, the first number differs, but the second must still be `0`. If the script stops with `the result table header changed` or `expected one "## Result table" heading`, P2c's layout moved: report it and commit without the checklist. Never edit P2c's lines to make it fit.
+
+- [ ] **Step 9: Commit (SDK)**
+
+```bash
+cd "$SDKWT"
+export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
+# Last gate before the commit: what P2d's `site` job (ci.yml) runs on tools/release. Its tsc pass type-checks
+# dev-release.ts, the protocol/lib files it imports and test/dev-release.test.ts under strict nodenext TypeScript.
+(cd site && npm ci) && site/node_modules/.bin/tsc -p tools/release/tsconfig.json && node --test "tools/release/test/*.test.ts" \
+  || { echo "STOP: the site job's release-tools check failed; nothing was committed"; exit 1; }
+git add tools/release/dev-release.ts tools/release/test/dev-release.test.ts
+git diff --quiet -- docs/hardware-checklist.md 2>/dev/null || git add docs/hardware-checklist.md
+git commit -m "feat(release): dev-release for OTA testing, and the MausBot path hardware checks" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git show --stat --format= HEAD
 git status --short
 ```
 
-Expected: one commit, and an empty `git status`. Until Contract deviation 2 is approved, the commit holds `dev-release.ts` only and the test stays in `/private/tmp/p4b-dev-release-test`. Once the contract lists the test for P4b, copy it from there into `tools/release/` and commit it on `p4b-ota` as its own commit.
+Expected: `tsc` prints no type errors, and the release tool run ends with `fail 0`: every P2d release, licensing and docs test still passes, together with `dev-release.test.ts`'s 4 tests (P2d's Task 16 Step 3 expects `# pass 40` for its own tests, so `# pass 44` on a finished `p2d-installer`). A type error inside `protocol/lib/*.ts` is P1's: report it there. One in `tools/release/dev-release.ts` or its test is P4b's: fix it in Step 4 or Step 2, rerun Step 5, then this step. A failure only in P2d's own tests is not P4b's: compare with `p2d-installer` before you investigate. On `STOP` nothing is committed. Then one commit holding exactly `tools/release/dev-release.ts`, `tools/release/test/dev-release.test.ts` and `docs/hardware-checklist.md` (`136 +`). There is an empty `git status`; `site/node_modules/` is already ignored. When Step 1 or Step 8 said to commit without the checklist, the commit holds only the two release files: say so in the hand-off (Task 14 Step 6).
 
 ---
 
@@ -4356,8 +4628,8 @@ Expected: `1.0.1 [ 'amoled-175c' ] t1`. The simulator re-execs itself on commit,
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"; export E2E=$(cat /private/tmp/omb-ota-e2e.current)
-export WT=$(test -d /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota && echo /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota || echo /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget)
-cd "$WT"
+export WT=$(git -C /Users/omkar/Desktop/openmaus/OpenGrokBot worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} $0=="branch refs/heads/feat/gadget-ota"{print w}')
+test -n "$WT" && cd "$WT" && test "$(git branch --show-current)" = feat/gadget-ota || { echo "STOP: no worktree has feat/gadget-ota checked out"; exit 1; }
 # The `companion` package script, run directly so the PID is the companion's own.
 OMB_COMPANION_DIR="$E2E/companion" OMB_PORT=18799 OMB_COMPANION_PORT=18810 OMB_CONTROL_PORT=18811 OMB_COMPANION_NAME="OTA e2e" \
 OMB_GADGET_MANIFEST_URL=http://127.0.0.1:18900/manifest.json OMB_GADGET_TRUST_TEST_KEY=1 \
@@ -4482,13 +4754,15 @@ Expected: exit 0. This runs `vitest run`, `broker:test`, `test:electron` and `te
 
 ```bash
 cd "$SDKWT"
-DRT=$(cat /private/tmp/p4b-dev-release-test.where)
-[ "$DRT" = "$SDKWT" ] || cp tools/release/dev-release.ts "$DRT/tools/release/dev-release.ts"
-node --test "$DRT/tools/release/dev-release.test.ts" && npm test && npm run vectors:check
+export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
+(cd site && npm ci) && site/node_modules/.bin/tsc -p tools/release/tsconfig.json && node --test "tools/release/test/*.test.ts"
+npm ci && npm test && npm run vectors:check
 git log --oneline p2d-installer..p4b-ota
+git diff --numstat p2d-installer..p4b-ota -- docs/hardware-checklist.md
+grep -c '^## MausBot path$' docs/hardware-checklist.md
 ```
 
-Expected: everything passes, and the log lists exactly the one commit from Task 12.
+Expected: the first line is what P2d's `site` job runs on `tools/release`. `tsc` prints no type errors (it checks `dev-release.ts`, the `protocol/lib` files it imports and `test/dev-release.test.ts` under strict nodenext TypeScript), and the release tool run ends with `fail 0`: every P2d release, licensing and docs test still passes, together with `dev-release.test.ts` (`# pass 44` on a finished `p2d-installer`, as in Task 12 Step 9). P1's suites pass and `vectors:check` prints no diff. The log lists exactly the one commit from Task 12. The numstat line is `136	0	docs/hardware-checklist.md`: P4b only added lines to P2c's file. The section count is `1`. If Task 12 committed without the checklist (Step 1 or Step 8 said so), the numstat prints nothing and the count is `0`; the hand-off says why.
 
 - [ ] **Step 5: Branch state for Omkar**
 
@@ -4516,7 +4790,9 @@ Give Omkar these points:
   ```
 
   The node check prints the key. Both test files pass.
-- **Contract deviations waiting for review.** Say whether Task 10 Step 5 was made or skipped (deviation 1, fast polling), and whether `dev-release.test.ts` is committed or still in `/private/tmp/p4b-dev-release-test` (deviation 2, which also runs in no SDK CI job). See "Contract deviations".
+- **Contract deviation waiting for review.** Say whether Task 10 Step 5 was made or skipped (deviation 1, fast polling). See "Contract deviations".
+- **SDK CI.** `tools/release/test/dev-release.test.ts` is committed on `p4b-ota`. Once the branch is pushed, the SDK's `site` job runs it with P2d's release tool tests, and so does `release.yml`'s `assemble` job on every release tag. A change that breaks the tool the update end to end relies on then fails CI.
+- **Hardware checks, now committed.** `docs/hardware-checklist.md` on `p4b-ota` has the "MausBot path" section (contract §5.1). It holds V1–V5 (P3b's voice checks), T1–T6 (P4a's bot-tool checks) and U1–U6 (this plan's Update-button checks), with four rows in the result table, so a release runs them from the checklist rather than from hand-off reports. Omkar runs them on hardware; no task here does. If Task 12 committed without the section, say why, and that it is still in `/private/tmp/p4b-mausbot-path.md`. If P3b's or P4a's final hand-off changed one of their checks (for example a new `SPEECH_GAP_MS` or `SILENCE_PEAK`), name the row that needs a follow-up commit on `p4b-ota`.
 - **mDNS during tests.** The spawned-sidecar test briefly advertises `_openmausbot._tcp` on whatever network runs the tests, as any companion start does.
 - **Full-app update (spec §10 end to end; required, for Omkar).** Task 13 drives the companion on its own. This runs the same update through the desktop app: the IPC channels, the Update cell and the polling. In one terminal, serve a test-signed 1.0.1 (it runs until Ctrl-C):
 
@@ -4532,7 +4808,7 @@ Give Omkar these points:
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
   export SDKWT=/Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk-p4b
-  export WT=$(test -d /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota && echo /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota || echo /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget)
+  export WT=$(git -C /Users/omkar/Desktop/openmaus/OpenGrokBot worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} $0=="branch refs/heads/feat/gadget-ota"{print w}'); echo "$WT"
   cmake -S "$SDKWT/firmware" -B "$SDKWT/build/ota-app" -DCMAKE_BUILD_TYPE=Debug -DGADGET_WITH_LVGL=ON -DGADGET_BUILD_TESTS=OFF -DGADGET_SIM_VERSION=1.0.0
   cmake --build "$SDKWT/build/ota-app" -j10 --target gadget-sim
   find "$SDKWT/build/ota-app" -type f -name gadget-sim -perm -u+x | head -1 > /private/tmp/omb-ota-app.sim; "$(cat /private/tmp/omb-ota-app.sim)" --version
@@ -4553,43 +4829,37 @@ Give Omkar these points:
   3. "Updated to 1.0.1", and the row's firmware line reads 1.0.1;
   4. a simulator built without `-DGADGET_SIM_VERSION` (so `0.0.0-dev`) and paired the same way shows "Custom build" and no button.
 
-  Afterwards quit OMB2, stop the dev release, reopen OpenMausBot, and remove the worktrees (the branches stay): `rm -rf /Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk-p4b/build/ota-app && git -C /Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk worktree remove /Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk-p4b`, and, only if Task 1 created it, `git -C /Users/omkar/Desktop/openmaus/OpenGrokBot worktree remove /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota`.
+  Afterwards quit OMB2, stop the dev release, reopen OpenMausBot, and remove the worktrees (the branches stay): `rm -rf /Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk-p4b/build/ota-app && git -C /Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk worktree remove /Users/omkar/Desktop/openmaus/openmausbot-gadget-sdk-p4b`, and P4b's own app worktree, which Task 1 Step 3 made unless the dispatcher handed P4b the shared one: `git -C /Users/omkar/Desktop/openmaus/OpenGrokBot worktree remove /Users/omkar/Desktop/openmaus/OpenGrokBot-gadget-ota`.
 
-**Hardware checklist** (P4b's on-device checks; for P2c's `docs/hardware-checklist.md` or for Omkar to run). Use one Waveshare ESP32-S3-Touch-AMOLED-1.75C, then repeat steps 1–4 on the lcd-154 and the devkit.
+**Hardware checks.** They are no longer only hand-off notes. Task 12 committed them as the "MausBot path" section of the SDK's `docs/hardware-checklist.md` (contract §5.1), with their rows in its result table:
+- U1–U6: this plan's Update-button checks, on the amoled-175c and then U1–U4 on the lcd-154 and the devkit. They are the signed update over Wi-Fi, power loss while sending, power loss while restarting, probation rollback, the release-key-only refusal and the official path.
+- V1–V5: P3b's voice checks.
+- T1–T6: P4a's bot-tool checks.
 
-1. **Signed update over Wi-Fi.** Build the board with `-D PROJECT_VER=1.0.0` and `CONFIG_GADGET_TEST_KEYS=y` (a local `sdkconfig` override; release builds keep it off), flash it over USB and pair it. Build the same board again at `PROJECT_VER=1.0.1` and serve `build/<board>/openmausbot-gadget.bin` with `dev-release.ts --board <board> --version 1.0.1`. Start the app with the two variables and click Update. Expected:
-   - progress moves;
-   - the gadget restarts and its boot log shows 1.0.1;
-   - the row reads "Updated to 1.0.1";
-   - 11 minutes later, past the 10-minute restart timeout, the row has no "Update failed" line: "Updated to 1.0.1" has gone (it shows for 10 minutes) and the firmware line still reads 1.0.1. The ESP32's restart sends no FIN, so this is the restart-order case of Review Focus 6;
-   - the pairing survives.
-2. **Power loss while sending.** Unplug at about 50%. Expected:
-   - the row shows "Update failed: The gadget stopped responding during the update." (or "…disconnected during the update." if it was replugged within 35 s);
-   - after replugging, the gadget boots 1.0.0;
-   - a new Update completes.
-3. **Power loss while restarting.** Unplug within 2 s after the progress reaches 100%. Expected:
-   - after replugging, the gadget either reaches 1.0.1 with `fw.installed`, or boots 1.0.0;
-   - in the second case the row says it "came back on 1.0.0";
-   - in either case, 11 minutes later the row has not turned into "has not come back": it still says "came back on 1.0.0", or it has no "Update failed" line and the firmware line reads 1.0.1.
-4. **Probation rollback.** Turn Remote access off the moment the progress reaches 100%, wait 6 minutes, then turn it on. Expected:
-   - the gadget is back on 1.0.0, because it could not reach `ready` within 5 minutes;
-   - the row shows Update available again.
-5. **Release key only.** Run step 1 with a board built without `CONFIG_GADGET_TEST_KEYS`. Expected: the gadget answers `fw.fail unknown_key`, and the row reads "Update failed: The gadget does not trust the key this update is signed with."
-6. **Official path, after Omkar's first two releases.** A board flashed from release N shows Update available for release N+1 from GitHub, with no variables set, and updates.
+The build commands there follow P2c's project file. The test-key images are built with `-D GADGET_TEST_KEYS=1 -D PROJECT_VER=1.0.0` (and `1.0.1`) in their own `build/<board>-mb-*` directories, and `dev-release.ts` serves `firmware/ports/esp32/build/<board>-mb-1.0.1/openmausbot-gadget.bin`. U5 flashes a build with no test key. U1 and U3 are Review Focus 6 on a real ESP32. Omkar runs them on hardware before a release; this plan runs none of them.
 
 Not verifiable without hardware: the real flash write speed and timing; the bootloader's slot switch and rollback; power-loss behaviour; the release-key-only firmware refusing t1 on a device; and the ESP32's TCP flow control under a 64 KiB window.
 
 ## Contract deviations
 
-Neither item renames or retypes anything pinned. Each is an edit outside P4b's pinned points, so each waits for review (contract §0 item 2). The plan runs without them: the step that needs each one first greps the contract and falls back when the item is not listed yet.
+This item renames or retypes nothing pinned. It is an edit outside P4b's pinned points, so it waits for review (contract §0 item 2). The plan runs without it: Task 10 Step 5 first greps the contract and is skipped when the item is not listed yet.
 
 1. **`src/components/PhoneSetupFlow.tsx`: `shouldPoll` and its import.** Contract §5.2 pins P4b's edits to this file to the firmware types (`gadgetFirmware`, with §3.18's `firmwareRefusal` and the two bridge methods). Task 10 Step 5 also makes `shouldPoll` (origin/main `:772`) true while `hasActiveGadgetUpdate(state)`, and imports `hasActiveGadgetUpdate` from `../lib/gadgets`. Without it the panel polls every 10 s, so "Updating… N%" moves in 10 s steps and "Updated to …" can show up to 10 s late. **Proposed change:** in §5.2, the row for `CompanionSection.tsx`, `PhoneSetupFlow.tsx`, … adds to P4b's pinned points "`shouldPoll` also true while `hasActiveGadgetUpdate(state)`, with that import from `../lib/gadgets`". Until then Task 10 Step 5 is skipped.
-2. **`tools/release/dev-release.test.ts` in the SDK.** Contract §5.1 gives `tools/release/**` to P2d, except `dev-release.ts`, so a P4b test there changes ownership; it is not a private file. It also runs in no CI job: contract §1.6 fixes the job ids, and the root `package.json` belongs to P1. **Proposed change:** in §5.1, "`tools/release/dev-release.ts`, `tools/release/dev-release.test.ts` | P4b (SDK branch `p4b-ota`)", plus a decision on CI: P2d's `site` job runs it, or P1 adds a `test:release` script that a job runs. Until then the test lives in `/private/tmp/p4b-dev-release-test`, a scratch mirror of `protocol/lib`, `keys/test-t1.*` and `tools/release` (Task 12), and is not committed.
+
+Deviation 2, where the SDK's dev-release test lives, is settled and no longer waits for review. Contract §5.1 gives `tools/release/test/dev-release.test.ts` to P4b, Task 12 commits it, and P2d's `site` and `assemble` jobs run it with no CI edit.
 
 ## Self-review
 
-- **Spec coverage:** every row of "Spec coverage" names a task, and the out-of-scope items name their owner plans. The §10 rows for companion, Desktop UI, end to end and hardware map to Tasks 7–9, 11, 13 (companion level), 14 (the full app, a required manual check) and 14's hardware checklist.
-- **Placeholder scan:** no TBD, TODO or "similar to"; every code step carries complete code, and every command block can be pasted into a fresh shell as it is (Task 13 reads `$E2E` back from `/private/tmp/omb-ota-e2e.current`). Five places are conditional, each with a concrete action rather than a gap: P3a's exact anchors (found by `grep -n` on named text), P3a's `CompanionSection` mocks (copied from P3a's own test), the `nextBinary` payload form (fall back to `decodeBinary`), and the two contract-deviation gates (a `grep` on the contract, with a stated fallback).
+- **Spec coverage:** every row of "Spec coverage" names a task, and the out-of-scope items name their owner plans. The §10 rows for companion, Desktop UI, end to end and hardware map to Tasks 7–9, 11, 12 (the dev-release tool and its CI-run test), 13 (companion level) and 14 (the full app, a required manual check). The hardware row maps to Task 12's "MausBot path" section of `docs/hardware-checklist.md`, rows U1–U6. The same section carries P3b's voice checks (V1–V5) and P4a's bot-tool checks (T1–T6), so every on-device check of the three app plans sits in a committed checklist that runs before a release.
+- **Placeholder scan:** no TBD, TODO or "similar to"; every code step carries complete code, and every command block can be pasted into a fresh shell as it is (Task 13 reads `$E2E` back from `/private/tmp/omb-ota-e2e.current`). Six places are conditional, each with a concrete action rather than a gap:
+  - P3a's exact anchors, found by `grep -n` on named text;
+  - P3a's `CompanionSection` mocks, copied from P3a's own test;
+  - the `nextBinary` payload form, falling back to `decodeBinary`;
+  - the fast-polling deviation gate, a `grep` on the contract with a stated fallback;
+  - Task 12's check that P2d's CI jobs still run `tools/release/test/*.test.ts` (stop and report if not);
+  - Task 12's checklist insertion. It refuses a changed P2c layout, and then the commit leaves the checklist out and the hand-off reports it.
+
+  The `<board>` in the checklist section's commands is a fill-in for the person at the bench, as in P2c's own rows, not a plan gap.
 - **Type consistency:** `VerifiedImage` (Task 4) carries `keyId`, which Task 5 sends as `key_id`. `GadgetUpdateStatus`/`GadgetFirmwareState` match field for field across `firmware.ts`, `PhoneSetupFlow.tsx` and the tests. `startUpdate`'s refusal shape matches the control route, `companionFirmwareUpdate`'s `firmwareRefusal` and `CompanionState.firmwareRefusal`. `FwPhase` values are a subset of `GadgetUpdatePhase`. `updateCellState`'s kinds match `GadgetUpdateCell`'s branches.
 - **Review Focus:** all six lines have tests in their owning tasks (listed under each line).
 

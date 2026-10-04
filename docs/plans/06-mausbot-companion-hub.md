@@ -22,6 +22,7 @@
 - **Long commands.** `pnpm exec tsc -p tsconfig.server.json` takes 40–150 s and `pnpm typecheck` about 3 minutes, so give those Bash calls a timeout of at least 10 minutes (600000 ms). The full `pnpm exec vitest run` in Task 19 takes about 52 minutes and must run in the background (`run_in_background`). A command that seems to hang is usually one of these.
 - Never checkout, stash, reset, edit or fetch in `/Users/omkar/Desktop/openmaus/OpenGrokBot` (another session owns it); read it only with `git -C … show origin/main:<path>`. No `git fetch`, no push, no PR: Omkar publishes.
 - Branch `feat/gadget-hub` from commit `6dd4403d8fbbbd5c17169724cb2a529f11d7543e` (`origin/main` when this plan was written), named by its SHA, because other sessions may fetch and every patch below is line-exact against it; P3b, P4a and P4b branch from it.
+- Merge order (contract §1.3): P3a, then P3b, then P4a, then P4b. Before Omkar merges each later branch, it is rebased onto the one merged just before it. P3a goes first and needs no rebase. Once the other three have branched, a P3a fix must not move or rewrite their anchor lines in `companion/src/index.ts` and `companion/src/control.ts` (listed under "Notes for the other app plans").
 - The companion ships as plain `tsc` output with no `node_modules`: `companion/src/**` uses Node built-ins and relative `.ts` imports only, never `shared/` or `server/`, erasable TypeScript syntax only (no `enum`, no parameter properties). No new dependencies anywhere in this plan.
 - `/gadget` is attached only to the `0.0.0.0:8810` server's `upgrade` listener, before `proxy.upgrade`, never to the managed (hosted HTTPS) origin.
 - Transport: subprotocol `openmausbot-gadget.1`; any `Origin` header is refused; no extensions; text frames ≤ 16 KiB, binary ≤ 8 KiB; ping every 15 s; 45 s without an inbound frame drops the socket.
@@ -61,6 +62,7 @@ Every code block and patch below was run, not just written. A scratch mirror of 
 - **Electron:** the `node:test` files passed, including the existing `companion-browser.node-test.mjs`. Its slice-to-end-of-file pattern is why the new helpers sit before `companionCloudDesktopAccess`.
 - **Fixed values:** the contract §1.7 values were re-verified with `node:crypto`. They include the RFC key id, the high-S prove signature, the 69-byte short DER, and the firmware signature with `t1`.
 - **`server/index.ts`:** syntax-checked with esbuild. The full app typecheck, the packaged-server smoke, `check:electron`, `i18n:check` and the full vitest suite run in Task 19.
+- **Merge anchors:** Task 12's and Task 13's patches were applied to the 6dd4403 `control.ts` and `index.ts` in a scratch git repo. P3b's, P4a's and P4b's edits were then made on three branches cut from that commit, at the anchors listed under "Notes for the other app plans". The three merged in order with no conflict, and the P3b → P4a → P4b rebase chain gave the same files. The previous order, with `voice: undefined,` directly above `onDevicesChanged: undefined,`, conflicted when P3b and P4a were merged.
 - **Vectors:** `vectors.test.ts` passed 7 of 7 against P1's real files, copied with Task 18's commands from the SDK's `main` (all 8 files `OK` under `shasum -c`); the gadget folder was then 15 files and 178 tests.
 
 ---
@@ -7497,7 +7499,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `createGadgetHub` (Tasks 9–11), `loadOrCreateHostId`, `serviceTxt` (Task 6), the control options (Task 12).
-- Produces (contract §3.12, P3a column): `const HOST_ID = loadOrCreateHostId()`; TXT `["v=1", "name=…", "id=<HOST_ID>"]`; `const gadgetHub = createGadgetHub({devices, harnessPort: HARNESS_PORT, mutationToken: parentPort ? () => mutationToken : undefined, hostId: HOST_ID, hostName: machineName, connected: connectedDevices.open, voice: undefined, onDevicesChanged: undefined})`, which are the insertion points P3b (`voice`) and P4a (`onDevicesChanged`) fill in. Also: the `upgrade` dispatcher on the LAN listener only (`managedOrigin` keeps `proxy.upgrade`); `hostId` and `gadgetHub` in the control options; `gadgetHub.revoke(deviceId)` before the mutation-token early return; `await gadgetHub.close()` before `closeAllConnections`. The parentPort listener now parses `message.gadgetControlToken` (43-character base64url) into `export let gadgetControlToken: string | null`. A standalone sidecar reads `OMB_GADGET_CONTROL_TOKEN` once, then deletes it from `process.env`. `export function onMutationToken(cb)` runs `cb` once, when the relay token is first known. Both are exported only so this branch typechecks under `noUnusedLocals` before P4a reads them; the names and types are the contract's.
+- Produces (contract §3.12, P3a column): `const HOST_ID = loadOrCreateHostId()`; TXT `["v=1", "name=…", "id=<HOST_ID>"]`; `const gadgetHub = createGadgetHub({devices, voice: undefined, harnessPort: HARNESS_PORT, mutationToken: parentPort ? () => mutationToken : undefined, hostId: HOST_ID, hostName: machineName, connected: connectedDevices.open, onDevicesChanged: undefined})`, which are the insertion points P3b (`voice`) and P4a (`onDevicesChanged`) fill in. Write the properties in exactly this order, one per line: `voice: undefined,` directly after `devices,`, and `onDevicesChanged: undefined,` last, directly before `});`. P3b and P4a each replace one of those two lines on branches cut from `feat/gadget-hub`, and git reports a conflict when two branches change adjacent lines. Five unchanged lines between them let the two merge cleanly (checked with `git merge` and `git rebase` in a scratch repo). Also: the `upgrade` dispatcher on the LAN listener only (`managedOrigin` keeps `proxy.upgrade`); `hostId` and `gadgetHub` in the control options; `gadgetHub.revoke(deviceId)` before the mutation-token early return; `await gadgetHub.close()` before `closeAllConnections`. The parentPort listener now parses `message.gadgetControlToken` (43-character base64url) into `export let gadgetControlToken: string | null`. A standalone sidecar reads `OMB_GADGET_CONTROL_TOKEN` once, then deletes it from `process.env`. `export function onMutationToken(cb)` runs `cb` once, when the relay token is first known. Both are exported only so this branch typechecks under `noUnusedLocals` before P4a reads them; the names and types are the contract's.
 
 - [ ] **Step 1: Write the failing end-to-end test**
 
@@ -7775,12 +7777,12 @@ git apply <<'PATCH'
  const connectedDevices = createConnectedDeviceTracker();
 +const gadgetHub = createGadgetHub({
 +  devices,
++  voice: undefined,
 +  harnessPort: HARNESS_PORT,
 +  mutationToken: parentPort ? () => mutationToken : undefined,
 +  hostId: HOST_ID,
 +  hostName: machineName,
 +  connected: connectedDevices.open,
-+  voice: undefined,
 +  onDevicesChanged: undefined,
 +});
  const proxy = createProxyHandler({
@@ -9848,7 +9850,7 @@ Expected: no output.
 
 - [ ] **Step 5: Hand-off summary (paste into the PR description draft; do not push or open a PR)**
 
-Write `git log --oneline origin/main..feat/gadget-hub` and the summary below into the hand-off message for Omkar.
+Write `git log --oneline origin/main..feat/gadget-hub` and the summary below into the hand-off message for Omkar. Also state the merge order (contract §1.3). This branch merges first, then P3b (`feat/gadget-voice`), P4a (`feat/gadget-tools`) and P4b (`feat/gadget-ota`). Each of those is rebased onto the branch merged before it.
 
 What this branch does:
 
@@ -9873,8 +9875,19 @@ Known limitation (A35): the companion control port's `GET /state` and pairing ro
 
 ## Notes for the other app plans
 
+- **Merge order and anchors (contract §1.3, §3.12, §3.13).** Omkar merges P3a, then P3b, then P4a, then P4b. Before each later branch is merged, it is rebased onto the branch merged just before it. P3b, P4a and P4b all edit P3a's `companion/src/index.ts` and `companion/src/control.ts`. Git reports a conflict when two branches change adjacent lines, so each plan's edit sits at least one unchanged line away from every other plan's edit. These are the anchors as they read on `feat/gadget-hub`. Find each one with `grep -n` and insert or replace exactly there:
+
+  | Where | P3b | P4a | P4b |
+  |---|---|---|---|
+  | `index.ts` imports | below `import { createGadgetHub } from "./gadget/hub.ts";` | below `import { notifyDeviceRevoked } from "./harness-notice.ts";` | below `import { loadOrCreateHostId, serviceTxt } from "./host-id.ts";` |
+  | `index.ts` `createGadgetHub({…})` | replace `voice: undefined,` (the line after `devices,`) | replace `onDevicesChanged: undefined,` (the last line before `});`) | the `const firmware = …` statement goes after the call's closing `});` |
+  | `index.ts` `createControlServer({…})` | — | after `gadgetHub,` | `firmware,` after `hostId: HOST_ID,`. Use the line inside `createControlServer({`, because the `createGadgetHub` call has a line with the same text |
+  | `index.ts` `shutdown()` | — | — | `firmware.close();` before `await gadgetHub.close();` |
+  | `control.ts` imports | — | below `import { cleanGadgetName, type DeviceRegistry, type GadgetSettingsPatch } from "./devices.ts";`. Task 12 rewrote origin/main's `import type { DeviceRegistry } from "./devices.ts";` into this line, so the old text is not on the branch | below `import type { GadgetHub } from "./gadget/hub.ts";` |
+  | `control.ts` `ControlOptions` | — | after `gadgetHub?: GadgetHub;` | `firmware?:` directly after `publicNetworks?: () => ReadonlySet<string>;`, before P3a's `hostId` comment |
+
 - **P3b (voice):**
-  - Pass `voice: createGadgetVoice` at the `createGadgetHub` call in `companion/src/index.ts`.
+  - Pass `voice: createGadgetVoice` at the `createGadgetHub` call in `companion/src/index.ts`. It replaces the `voice: undefined,` line directly after `devices,`.
   - `SpeechOut.stop()` must send `speak.stop` synchronously, and only for a stream that is playing or queued. With nothing playing it must be a no-op that sends no frame, because the turn engine now calls it at the start of every new turn, not only on barge-in and Stop (spec §6.2 Speech item 6). On barge-in and Stop it runs before the old turn's `done`.
   - The final `reply`, the `replyFinal` call and the `done` after it can wait up to 250 ms after a partial reply (the spec §4.4 cap). Tests should wait for `done` or for the speech frames, not assume the final reply is immediate.
   - `replyFinal` gets the raw, unshaped text.
@@ -9900,6 +9913,7 @@ Contract §0 item 3 allows these additions, because no other plan depends on the
 - **Additive component members:** `GadgetRow`'s optional `onRename` prop (the desktop rename that spec §4.3 and §6.4 require; the contract's row list predates it), and the exported `PairGadgetCode`, the open-window view `PairGadgetPanel` renders. P4b's `updateCell` prop is unchanged, and the `onRename` line sits before the `onRemove={…}` line that P4b's plan adds `updateCell` after.
 - **Additional files edited (no other plan touches them):** `src/lib/phone-setup.ts` (`pairedDeviceKind`), and existing tests narrowed or extended for the `PublicDevice` union: `companion/test/devices.test.ts`, `companion/test/control.test.ts`, `src/components/SidebarPhoneButton.test.ts`, `src/lib/phone-setup.test.ts`, `src/components/CompanionSection.test.ts` and `src/components/PhoneSetupFlow.publicNetwork.test.ts`. `electron/preload.node-test.mjs` is also edited, but contract §5.2 already pins it (P3a's three methods, P4b's two).
 - **Control page:** the `page()` script in `companion/src/control.ts` (a P3a-owned file) draws gadget rows without the phone-only grant buttons.
+- **`createGadgetHub({…})` property order:** `voice: undefined,` comes directly after `devices,`, and `onDevicesChanged: undefined,` comes last, so that P3b's and P4a's one-line replacements are five lines apart and merge without a conflict (contract §1.3). The names and values are the contract's §3.12 P3a cell. Only the line order is pinned here.
 - **index.ts TXT record:** written through `serviceTxt(machineName(), HOST_ID)`. It gives the same `v=1` and `name=` entries as before, plus `id=`.
 - **`export` keyword:** the pinned `let gadgetControlToken` and `function onMutationToken` (companion), and `let gadgetControlToken` (harness), are exported only to satisfy `noUnusedLocals` on this branch. Their names and types are unchanged.
 - **Default bot (D13):** applied inside `completeProve` for both newly enrolled and known gadgets, which is the same rule in one place.
