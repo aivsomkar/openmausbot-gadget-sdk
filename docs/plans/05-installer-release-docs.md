@@ -6645,7 +6645,7 @@ Rewrite the alt texts to describe what each render actually shows; read the imag
 
 Desktop screenshots (the "Pair a gadget" dialog and a gadget row in MausBot's Remote access settings) are added after the OpenMausBot hub (P3a) is built. Leave them out of this task.
 
-### Task 15: Branch verification
+### Task 16: Branch verification
 
 **Files:** none created. This task runs everything and records results.
 
