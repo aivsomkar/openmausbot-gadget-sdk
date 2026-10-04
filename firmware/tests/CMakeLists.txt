@@ -12,3 +12,4 @@ function(gadget_pure_test area)
 endfunction()
 
 gadget_pure_test(util)
+gadget_pure_test(proto)

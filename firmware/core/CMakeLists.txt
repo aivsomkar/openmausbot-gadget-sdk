@@ -4,6 +4,7 @@
 # correct that branch), a static library for the desktop build otherwise.
 set(GADGET_CORE_SRCS
   src/util.c
+  src/proto.c
 )
 
 if(ESP_PLATFORM)
