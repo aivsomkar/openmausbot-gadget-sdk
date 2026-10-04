@@ -100,6 +100,11 @@ gadget_status_t hal_crypto_sha256(const void *data, size_t len, uint8_t out[GADG
 }
 
 gadget_status_t hal_crypto_sha256_begin(hal_sha256_t *ctx) {
+  if (ctx == NULL) return GADGET_ERR_ARG;
+  /* A live operation is aborted, not leaked: a hardware SHA driver can hold
+   * the accelerator until its operation ends. So ctx starts zeroed
+   * (hal_sha256_t ctx = {0}) or comes from finish or abort. */
+  if (ctx->op != NULL) hal_crypto_sha256_abort(ctx);
   psa_hash_operation_t *op = malloc(sizeof *op);
   if (op == NULL) return GADGET_ERR_NO_MEM;
   *op = psa_hash_operation_init();

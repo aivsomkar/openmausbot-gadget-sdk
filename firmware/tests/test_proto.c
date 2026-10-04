@@ -1,11 +1,13 @@
 /* firmware/tests/test_proto.c */
 /* SPDX-License-Identifier: Apache-2.0 */
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "gadget_proto.h"
 #include "unity.h"
 
 void setUp(void) {}
-void tearDown(void) {}
+void tearDown(void) { cJSON_InitHooks(NULL); } /* a failed OOM check must not leave its allocator behind */
 
 /* A local copy of the amoled-175c descriptor (contract §2.3), so this test
  * does not depend on boards.c. */
@@ -164,6 +166,102 @@ static void test_decode_rejects_and_ignores(void) {
   gp_msg_free(&m);
 }
 
+/* {"op":"heard","turn":"t","text":<text>,"a":[[…]]} with n nested arrays in "a". */
+static char *heard_nested(const char *text_json, size_t n) {
+  char head[128];
+  int h = snprintf(head, sizeof head, "{\"op\":\"heard\",\"turn\":\"t\",\"text\":%s,\"a\":", text_json);
+  TEST_ASSERT_TRUE(h > 0 && (size_t)h < sizeof head);
+  char *s = malloc((size_t)h + 2 * n + 2);
+  TEST_ASSERT_NOT_NULL(s);
+  memcpy(s, head, (size_t)h);
+  memset(s + h, '[', n);
+  memset(s + h + n, ']', n);
+  s[(size_t)h + 2 * n] = '}';
+  s[(size_t)h + 2 * n + 1] = '\0';
+  return s;
+}
+
+static gadget_status_t decode_status(const char *json) {
+  gp_msg_t m;
+  gadget_status_t st = gp_decode(json, strlen(json), &m);
+  if (st == GADGET_OK) gp_msg_free(&m);
+  return st;
+}
+
+/* cJSON parses recursively and allows 1000 levels; on the gadget task's
+ * 16 KiB stack 300 levels overflow it. gp_decode caps the whole document at
+ * 32 levels, the outer object included, before cJSON sees it. */
+static void test_decode_rejects_deep_nesting(void) {
+  static const size_t too_deep[] = {1000, 300, 32};
+  for (size_t i = 0; i < sizeof too_deep / sizeof too_deep[0]; i++) {
+    char *s = heard_nested("\"x\"", too_deep[i]);
+    char what[48];
+    snprintf(what, sizeof what, "%zu nested arrays", too_deep[i]);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GADGET_ERR_PARSE, decode_status(s), what);
+    free(s);
+  }
+  char *s = heard_nested("\"x\"", 31); /* 32 levels: the cap */
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, decode_status(s));
+  free(s);
+  /* an escaped backslash ends the string: the brackets after it still count */
+  s = heard_nested("\"x\\\\\"", 32);
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_PARSE, decode_status(s));
+  free(s);
+
+  /* brackets and braces inside a string are text, not nesting, also after
+   * an escaped quote */
+  char text[160] = "{\"op\":\"heard\",\"turn\":\"t\",\"text\":\"";
+  size_t o = strlen(text);
+  memset(text + o, '[', 50);
+  o += 50;
+  strcpy(text + o, "\\\"");
+  o += 2;
+  memset(text + o, '[', 50);
+  o += 50;
+  strcpy(text + o, "{{]\"}");
+  gp_msg_t m = decode_ok(text);
+  TEST_ASSERT_EQUAL_size_t(104, strlen(m.m.heard.text));
+  TEST_ASSERT_EQUAL_CHAR('"', m.m.heard.text[50]);
+  TEST_ASSERT_EQUAL_CHAR('[', m.m.heard.text[100]);
+  gp_msg_free(&m);
+
+  /* act args nested 20 deep are fine */
+  char act[256] = "{\"op\":\"act\",\"id\":\"x1\",\"name\":\"relay\",\"args\":";
+  o = strlen(act);
+  for (int i = 0; i < 19; i++) o += (size_t)snprintf(act + o, sizeof act - o, "{\"a\":");
+  o += (size_t)snprintf(act + o, sizeof act - o, "{\"on\":true");
+  for (int i = 0; i < 20; i++) act[o++] = '}';
+  act[o++] = '}';
+  act[o] = '\0';
+  m = decode_ok(act);
+  const cJSON *v = m.m.act.args;
+  for (int i = 0; i < 19; i++) v = cJSON_GetObjectItemCaseSensitive(v, "a");
+  TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(v, "on")));
+  gp_msg_free(&m);
+}
+
+/* PROTOCOL.md sets no upper bound on expires_s or ttl_s: a longer lifetime
+ * is kept for a day instead of dropping the whole message. */
+static void test_decode_clamps_lifetimes_to_a_day(void) {
+  gp_msg_t m = decode_ok("{\"op\":\"card\",\"id\":\"c1\",\"title\":\"T\",\"body\":\"B\",\"ttl_s\":100000}");
+  TEST_ASSERT_EQUAL_UINT32(86400, m.m.card.ttl_s);
+  gp_msg_free(&m);
+  m = decode_ok("{\"op\":\"card\",\"id\":\"c1\",\"title\":\"T\",\"body\":\"B\",\"ttl_s\":86399}");
+  TEST_ASSERT_EQUAL_UINT32(86399, m.m.card.ttl_s);
+  gp_msg_free(&m);
+  m = decode_ok("{\"op\":\"ask\",\"id\":\"a_1\",\"kind\":\"permission\",\"title\":\"Run?\",\"body\":\"ls\",\"expires_s\":172800}");
+  TEST_ASSERT_EQUAL_UINT32(86400, m.m.ask.expires_s);
+  gp_msg_free(&m);
+  m = decode_ok("{\"op\":\"image.begin\",\"id\":\"i1\",\"stream\":7,\"w\":300,\"h\":200,\"ttl_s\":4294967295}");
+  TEST_ASSERT_EQUAL_UINT32(86400, m.m.image_begin.ttl_s);
+  gp_msg_free(&m);
+  /* still integers and never negative */
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_PARSE, decode_status("{\"op\":\"card\",\"id\":\"c\",\"title\":\"T\",\"ttl_s\":-1}"));
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_PARSE, decode_status("{\"op\":\"card\",\"id\":\"c\",\"title\":\"T\",\"ttl_s\":1.5}"));
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_PARSE,
+                        decode_status("{\"op\":\"ask\",\"id\":\"a\",\"kind\":\"question\",\"title\":\"t\",\"expires_s\":-5}"));
+}
+
 static void test_encode_hello_exact(void) {
   static const gp_action_decl_t chime = {"chime", "Play a short chime.", NULL, GADGET_RISK_SAFE};
   gp_hello_t h = {.id = "gad_3f9a0c2b7e41d856", .pubkey_b64 = "BHx=", .name = "Desk Maus", .fw = "1.0.0",
@@ -251,6 +349,97 @@ static void test_encode_small_ops(void) {
   TEST_ASSERT_EQUAL_INT(GADGET_ERR_LIMIT, gp_encode_fw_installed(buf, 10, &fi));
 }
 
+/* ---- out of memory: every allocation cJSON makes can fail on the device ---- */
+
+/* Fails only the allocation numbered s_fail_at (0-based), as a fragmented
+ * heap does: one request fails and smaller ones after it still succeed. */
+static int s_fail_at, s_alloc_count;
+static bool s_alloc_failed;
+
+static void *one_failing_malloc(size_t n) {
+  if (s_alloc_count++ == s_fail_at) {
+    s_alloc_failed = true;
+    return NULL;
+  }
+  return malloc(n);
+}
+
+static cJSON *s_data; /* act.result and event data, built before the limit applies */
+
+static int encode_case(int i, char *buf, size_t cap) {
+  static const gp_action_decl_t acts[2] = {
+      {"chime", "Play a short chime.", NULL, GADGET_RISK_SAFE},
+      {"relay", "Switch the relay.", "{\"type\":\"object\",\"properties\":{\"on\":{\"type\":\"boolean\"}}}",
+       GADGET_RISK_CONFIRM}};
+  const gp_hello_t hello = {.id = "gad_3f9a0c2b7e41d856", .pubkey_b64 = "BHx=", .name = "Desk Maus", .fw = "1.0.0",
+                            .board = &AMOLED, .actions = acts, .n_actions = 1,
+                            .battery_valid = true, .battery_pct = 82, .charging = true};
+  gp_hello_t hello_params = hello;
+  hello_params.n_actions = 2;
+  const gp_hello_t hello_devkit = {.id = "gad_x", .pubkey_b64 = "B", .name = "n", .fw = "0.0.0-dev",
+                                   .board = &DEVKIT_NO_SPK};
+  switch (i) {
+    case 0: return gp_encode_hello(buf, cap, &hello);
+    case 1: return gp_encode_hello(buf, cap, &hello_devkit);
+    case 2: return gp_encode_prove(buf, cap, &(gp_prove_t){"MEYC", "123456"});
+    case 3: return gp_encode_voice_begin(buf, cap, &(gp_voice_begin_t){"t-1", 4, 16000});
+    case 4: return gp_encode_voice_end(buf, cap, &(gp_voice_end_t){"t-1", 1240});
+    case 5: return gp_encode_voice_drop(buf, cap, &(gp_voice_drop_t){"t-1"});
+    case 6: return gp_encode_say(buf, cap, &(gp_say_t){"t-1", "hello"});
+    case 7: return gp_encode_stop(buf, cap, &(gp_stop_t){"t-1"});
+    case 8: return gp_encode_answer(buf, cap, &(gp_answer_t){"a_1", "allow"});
+    case 9: return gp_encode_act_result(buf, cap, &(gp_act_result_t){"x1", true, s_data, NULL});
+    case 10: return gp_encode_act_result(buf, cap, &(gp_act_result_t){"x1", false, NULL, "nope"});
+    case 11: return gp_encode_sense(buf, cap, &(gp_sense_t){true, 81, true});
+    case 12: return gp_encode_event(buf, cap, &(gp_event_msg_t){"button.long_press", s_data});
+    case 13: return gp_encode_fw_ready(buf, cap, &(gp_fw_ready_t){2});
+    case 14: return gp_encode_fw_fail(buf, cap, &(gp_fw_fail_t){2, "bad_sig"});
+    case 15: return gp_encode_fw_progress(buf, cap, &(gp_fw_progress_t){2, 65536});
+    case 16: return gp_encode_fw_installed(buf, cap, &(gp_fw_installed_t){"1.1.0"});
+    case 17: return gp_encode_hello(buf, cap, &hello_params);
+    default: return 0;
+  }
+}
+
+/* For each encoder, fail its 1st, 2nd, 3rd … allocation in turn: the result
+ * is GADGET_ERR_NO_MEM or the exact frame, never a frame missing a field.
+ * Case 17 parses an action's params_json, and cJSON_Parse cannot tell a
+ * short heap from bad JSON, so a failure inside that parse reports
+ * GADGET_ERR_ARG (bad params) instead; it still sends nothing. */
+static void test_encoders_fail_whole_when_out_of_memory(void) {
+  s_data = cJSON_CreateObject();
+  cJSON_AddNumberToObject(cJSON_AddObjectToObject(s_data, "level"), "n", 3);
+  cJSON_AddStringToObject(s_data, "s", "x");
+  cJSON_Hooks hooks = {.malloc_fn = one_failing_malloc, .free_fn = free};
+  static char want[GADGET_TEXT_FRAME_MAX], got[GADGET_TEXT_FRAME_MAX];
+  for (int i = 0; i <= 17; i++) {
+    int want_n = encode_case(i, want, sizeof want);
+    TEST_ASSERT_GREATER_THAN_INT(0, want_n);
+    cJSON_InitHooks(&hooks);
+    int failures = 0;
+    for (int k = 0;; k++) {
+      TEST_ASSERT_LESS_THAN_INT_MESSAGE(2000, k, want);
+      s_fail_at = k;
+      s_alloc_count = 0;
+      s_alloc_failed = false;
+      memset(got, 0, sizeof got);
+      int n = encode_case(i, got, sizeof got);
+      if (!s_alloc_failed) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(want_n, n, want);
+        TEST_ASSERT_EQUAL_STRING(want, got);
+        break;
+      }
+      failures++;
+      if (i == 17 && n == GADGET_ERR_ARG) continue;
+      TEST_ASSERT_EQUAL_INT_MESSAGE(GADGET_ERR_NO_MEM, n, want);
+    }
+    TEST_ASSERT_GREATER_THAN_INT(2, failures);
+    cJSON_InitHooks(NULL);
+  }
+  cJSON_Delete(s_data);
+  s_data = NULL;
+}
+
 static void test_binary_frames(void) {
   uint8_t frame[16];
   const uint8_t pay[3] = {9, 8, 7};
@@ -302,9 +491,12 @@ int main(void) {
   RUN_TEST(test_decode_conversation_ops);
   RUN_TEST(test_decode_display_ops);
   RUN_TEST(test_decode_rejects_and_ignores);
+  RUN_TEST(test_decode_rejects_deep_nesting);
+  RUN_TEST(test_decode_clamps_lifetimes_to_a_day);
   RUN_TEST(test_encode_hello_exact);
   RUN_TEST(test_encode_hello_without_speaker_or_battery);
   RUN_TEST(test_encode_small_ops);
+  RUN_TEST(test_encoders_fail_whole_when_out_of_memory);
   RUN_TEST(test_binary_frames);
   RUN_TEST(test_signed_texts);
   return UNITY_END();

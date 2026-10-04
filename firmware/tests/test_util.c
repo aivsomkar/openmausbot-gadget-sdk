@@ -170,6 +170,17 @@ static void test_utf8_len(void) {
   TEST_ASSERT_EQUAL_size_t(3, gadget_utf8_len("a\xc3\xa9\xe2\x80\xa6"));
   TEST_ASSERT_EQUAL_size_t(2, gadget_utf8_len("\xf0\x9f\x98\x80z"));  /* 4-byte sequence */
   TEST_ASSERT_EQUAL_size_t(3, gadget_utf8_len("\xff\xc3z"));          /* invalid: one per byte */
+  /* overlong, surrogate and above U+10FFFF are invalid too (RFC 3629 §4) */
+  TEST_ASSERT_EQUAL_size_t(3, gadget_utf8_len("\xe0\x80\x80"));       /* overlong U+0000 */
+  TEST_ASSERT_EQUAL_size_t(3, gadget_utf8_len("\xed\xa0\x80"));       /* surrogate U+D800 */
+  TEST_ASSERT_EQUAL_size_t(4, gadget_utf8_len("\xf4\x90\x80\x80"));   /* U+110000 */
+  TEST_ASSERT_EQUAL_size_t(4, gadget_utf8_len("\xf0\x80\x80\x80"));   /* overlong 4-byte */
+  /* the edges of those ranges stay valid */
+  TEST_ASSERT_EQUAL_size_t(1, gadget_utf8_len("\xe0\xa0\x80"));       /* U+0800 */
+  TEST_ASSERT_EQUAL_size_t(1, gadget_utf8_len("\xed\x9f\xbf"));       /* U+D7FF */
+  TEST_ASSERT_EQUAL_size_t(1, gadget_utf8_len("\xee\x80\x80"));       /* U+E000 */
+  TEST_ASSERT_EQUAL_size_t(1, gadget_utf8_len("\xf0\x90\x80\x80"));   /* U+10000 */
+  TEST_ASSERT_EQUAL_size_t(1, gadget_utf8_len("\xf4\x8f\xbf\xbf"));   /* U+10FFFF */
 }
 
 static void test_prng_is_xorshift32(void) {

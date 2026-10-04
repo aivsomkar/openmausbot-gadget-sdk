@@ -604,7 +604,9 @@ gadget_status_t hal_spk_open(uint32_t rate);
 size_t hal_spk_write(const int16_t *pcm, size_t samples);
 /* Milliseconds of audio queued but not yet played. */
 uint32_t hal_spk_buffered_ms(void);
-/* Drop everything queued and go silent now. The device stays open. */
+/* Drop everything queued and go silent: at once on boards with a codec
+ * mute; within one DMA ring (≤ 60 ms on the devkit) on boards without one.
+ * The device stays open. */
 void hal_spk_stop(void);
 /* Output level 0–100. */
 void hal_spk_set_volume(uint8_t pct);
@@ -629,7 +631,10 @@ gadget_status_t hal_storage_erase_all(void);          /* the "gadget" namespace 
 /* The port starts the radio (ESP32: esp_wifi_start() in STA mode) before
  * core_init(), so the RNG is truly random when core generates the key.
  * The simulator always reports GADGET_WIFI_CONNECTED. */
-gadget_status_t hal_wifi_connect(const char *ssid, const char *password); /* "" = open network; result via GADGET_EV_WIFI_STATE */
+/* "" = open network; result via GADGET_EV_WIFI_STATE. Before it returns,
+ * hal_wifi_state() reports GADGET_WIFI_CONNECTING (or CONNECTED), so a
+ * console `status` right after `wifi` shows "connecting". */
+gadget_status_t hal_wifi_connect(const char *ssid, const char *password);
 void hal_wifi_disconnect(void);
 gadget_wifi_state_t hal_wifi_state(void);
 gadget_status_t hal_wifi_scan(void);   /* result via GADGET_EV_WIFI_SCAN */
@@ -5089,6 +5094,9 @@ gadget_status_t hal_wifi_connect(const char *ssid, const char *password) {
   (void)password;
   snprintf(F.wifi_ssid, sizeof F.wifi_ssid, "%s", ssid);
   F.wifi_connects++;
+  /* gadget_hal.h: CONNECTING (or CONNECTED) before this returns; the result
+   * event comes from fake_wifi_set() */
+  if (F.wifi != GADGET_WIFI_CONNECTED) F.wifi = GADGET_WIFI_CONNECTING;
   return GADGET_OK;
 }
 
@@ -15480,6 +15488,19 @@ None of these renames or retypes anything in the contract. Each is an addition, 
    - delete the declaration from Task 1's `gadget_actions.h`;
    - in Task 13, drop `gadget_event_send`, `EVENT_DATA_MAX` and the two tests (`test_actions` then prints `7 Tests`, and the fail-first link misses only `gadget_action_register`), so core never sends `event` and `gp_encode_event` serves only the codec and its tests;
    - P2d does not document events, and `recent_events` comes out of spec §7, contract §3.15's `GadgetDirectoryEntry` and P4a's Tasks 7 and 10, so no tool advertises a field that cannot fill.
+
+## Deviations recorded during the build
+
+Review of Tasks 1–5 (commit `fix(P2a): address review of tasks 1-5`). Where these differ from the code blocks in Tasks 2, 3 and 5, the repository files are authoritative. From that commit on, `test_proto` prints `13 Tests 0 Failures 0 Ignored` (Task 2 expects 10 at its own commit); `test_util` stays at 11, `test_crypto` at 7 and `test_layout` at 5. CTest counts are unchanged. None of these changes the contract.
+
+1. **JSON depth cap (Task 2, `proto.c`).** `gp_decode` rejects a document nested more than 32 levels deep, the outer object included, with `GADGET_ERR_PARSE` before cJSON parses it (`GP_JSON_DEPTH_MAX`, `depth_ok()`, which skips brackets inside strings and honours escapes). cJSON parses recursively and allows 1000 levels (`CJSON_NESTING_LIMIT`). On a 16 KiB thread stack, the size P2c gives the gadget task, a 640-byte `heard` frame with 300 nested arrays crashed the decoder (SIGBUS) at `-O0` and `-O2`, so one small frame from any host could reboot the gadget. With the cap, depths 300, 999 and 7000 return `GADGET_ERR_PARSE` on that stack. Nothing in the protocol nests deeply, and `gp_decode` already returned `GADGET_ERR_PARSE` for bad input, so the contract is unchanged. Test: `test_decode_rejects_deep_nesting` (1000, 300 and 32 nested arrays are refused, 31 are accepted, brackets inside a string do not count, also after an escaped quote, an escaped backslash ends a string, and `act` args 20 levels deep decode).
+2. **Lifetimes are clamped, not refused (Task 2, `proto.c`).** `ask.expires_s`, `card.ttl_s` and `image.begin.ttl_s` accept any non-negative integer up to `UINT32_MAX` and are clamped to 86400 s (`GP_LIFETIME_MAX_S`, `lifetime_field()`). Task 2 refused anything over 86400, a limit that `PROTOCOL.md`, the spec and the contract do not set (the fake host accepts any non-negative integer), so a card with `ttl_s` 86401 or a permission ask with `expires_s` 172800 was dropped whole. Negative and fractional values are still refused. Test: `test_decode_clamps_lifetimes_to_a_day`.
+3. **Encoders fail whole (Task 2, `proto.c`).** Every `cJSON_Add*`/`Create*` result in the encoders and `caps_json` is checked: `begin()` returns NULL when it cannot add `op`, each encoder ANDs its adds into `ok`, `attach()`/`push()` delete an item they could not add, `caps_json` returns NULL on any failure, and `finish()` returns `GADGET_ERR_NO_MEM` unless every add succeeded. Before, a failed allocation on the device just left a field out and the encoder still succeeded (a `prove` without `sig`, a `hello` without `caps`). A NULL where a string is required now fails the same way instead of leaving the field out. An action's `params_json` that cJSON cannot parse is still `GADGET_ERR_ARG`; cJSON cannot tell a short heap from bad JSON there. Test: `test_encoders_fail_whole_when_out_of_memory` installs cJSON hooks that fail exactly one allocation (the 1st, 2nd, 3rd … in turn) for every encoder and checks each result is `GADGET_ERR_NO_MEM` or the exact frame; `tearDown` restores the default hooks.
+4. **UTF-8 per RFC 3629 (Task 1, `util.c`).** `gadget_utf8_len` counts overlong forms (`E0 80..9F`, `F0 80..8F`), surrogates (`ED A0..BF`) and sequences above U+10FFFF (`F4 90..BF`) as invalid, one per byte, as the contract says; before, each counted as one code point. `test_utf8_len` gains those inputs (3, 3, 4 and 4) and the valid edges U+0800, U+D7FF, U+E000, U+10000 and U+10FFFF.
+5. **`hal_crypto_sha256_begin` on a live context (Task 3, `crypto_psa.c`).** `begin` returns `GADGET_ERR_ARG` for a NULL `ctx` and aborts a live operation before starting a new one, instead of leaking it (256 bytes each time on the desktop; a hardware SHA driver on ESP-IDF can hold the accelerator until the operation is aborted). So `ctx` starts zeroed (`hal_sha256_t ctx = {0}`) or comes from `finish` or `abort`, as `test_crypto` and Task 14's static `O.hash` already do. `test_sha256_one_shot_and_multi_part` checks begin, update, begin, update, finish gives the right digest and begin(NULL). LeakSanitizer does not run on macOS arm64, so the leak itself was checked once with `malloc_zone_statistics` (256000 bytes left after 1000 rounds before the fix, 0 after); on Linux an `-DGADGET_SANITIZE=ON` build reports it.
+6. **`psa_crypto_init` outside Unity (Task 3, `test_crypto.c`).** `main` checks `psa_crypto_init()` with a plain `if`, prints `psa_crypto_init failed` and returns 3, as `test_vectors.c` does. A `TEST_ASSERT` before `UNITY_BEGIN` and outside `RUN_TEST` would longjmp to an unset frame.
+7. **Board table test (Task 5, `test_layout.c`).** `test_board_table_matches_contract` compares every field of every row of `gadget_board_at(i)`, in order, against an expected copy of contract §2.3's table (all 11 columns), checks that `gadget_board_by_id` returns the same row, and that there are exactly four. Before, it spot-checked some fields and missed, for example, `lcd-154`'s `input_mask` and `round`, `devkit`'s `display_name` and three `speaker_rate`s.
+8. **`gadget_hal.h` follows the contract (Task 1).** The committed header is contract §2.5 byte for byte. Task 1's copy above was out of date in two comments and now matches: `hal_spk_stop` (silent at once with a codec mute, within one DMA ring, at most 60 ms on the devkit, without one) and `hal_wifi_connect`, which adds a requirement: `hal_wifi_state()` reports `GADGET_WIFI_CONNECTING` (or `CONNECTED`) before `hal_wifi_connect` returns. Task 7's `fake_hal.c` now sets `CONNECTING` there unless it is already `CONNECTED` (so the tests that start from `CONNECTED` keep their connection and `test_wifi_drop_and_return` still starts from `CONNECTING`). Task 15a's `sim_wifi.c` already meets it, since its `hal_wifi_state()` is always `CONNECTED`, and so does P2c's port, whose `pl_wifi_connect()` reports `CONNECTING` before `hal_wifi_connect` returns.
 
 ## Self-review
 

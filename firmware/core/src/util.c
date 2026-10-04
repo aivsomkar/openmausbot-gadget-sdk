@@ -243,14 +243,22 @@ size_t gadget_utf8_copy_tail(char *dst, size_t cap, const char *src) {
   return o;
 }
 
-/* Length of the valid UTF-8 sequence at s, or 0 when it is invalid. */
+/* Length of the valid UTF-8 sequence at s, or 0 when it is invalid:
+ * RFC 3629 §4, so overlong forms (E0 80..9F, F0 80..8F), surrogates
+ * (ED A0..BF) and code points above U+10FFFF (F4 90..BF) are invalid. */
 static size_t utf8_seq_len(const unsigned char *s) {
   size_t n;
+  unsigned char lo = 0x80, hi = 0xBF; /* range of the second byte */
   if (s[0] < 0x80) return 1;
   if (s[0] >= 0xC2 && s[0] <= 0xDF) n = 2;
   else if (s[0] >= 0xE0 && s[0] <= 0xEF) n = 3;
   else if (s[0] >= 0xF0 && s[0] <= 0xF4) n = 4;
   else return 0;
+  if (s[0] == 0xE0) lo = 0xA0;
+  else if (s[0] == 0xED) hi = 0x9F;
+  else if (s[0] == 0xF0) lo = 0x90;
+  else if (s[0] == 0xF4) hi = 0x8F;
+  if (s[1] < lo || s[1] > hi) return 0;
   for (size_t i = 1; i < n; i++) {
     if (!is_cont(s[i])) return 0;
   }

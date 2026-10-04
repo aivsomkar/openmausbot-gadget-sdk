@@ -96,6 +96,16 @@ static bool settings_field(const cJSON *o, gp_settings_values_t *out, bool *pres
   return bool_field(s, "speak_pushes", &out->speak_pushes);
 }
 
+/* expires_s and ttl_s: any non-negative integer; the gadget keeps a
+ * message for at most a day. */
+#define GP_LIFETIME_MAX_S 86400u
+
+static bool lifetime_field(const cJSON *o, const char *key, uint32_t *out) {
+  if (!u32_field(o, key, false, 0, UINT32_MAX, out)) return false;
+  if (*out > GP_LIFETIME_MAX_S) *out = GP_LIFETIME_MAX_S;
+  return true;
+}
+
 static gp_style_t style_from(const char *s) {
   if (s && strcmp(s, "allow") == 0) return GP_STYLE_ALLOW;
   if (s && strcmp(s, "deny") == 0) return GP_STYLE_DENY;
@@ -106,7 +116,7 @@ static bool decode_ask(const cJSON *o, gp_ask_t *a) {
   const char *kind = NULL;
   if (!str_field(o, "id", true, &a->id) || !str_field(o, "kind", true, &kind) ||
       !str_field(o, "title", true, &a->title) || !str_field(o, "body", false, &a->body) ||
-      !u32_field(o, "expires_s", false, 0, 86400, &a->expires_s)) {
+      !lifetime_field(o, "expires_s", &a->expires_s)) {
     return false;
   }
   a->kind = strcmp(kind, "permission") == 0 ? GP_ASK_PERMISSION : GP_ASK_QUESTION;
@@ -191,7 +201,7 @@ static bool decode_fields(const cJSON *o, gp_msg_t *out) {
     case GP_OP_CARD: {
       gp_card_t *c = &out->m.card;
       return str_field(o, "id", true, &c->id) && str_field(o, "title", true, &c->title) &&
-             str_field(o, "body", false, &c->body) && u32_field(o, "ttl_s", false, 0, 86400, &c->ttl_s);
+             str_field(o, "body", false, &c->body) && lifetime_field(o, "ttl_s", &c->ttl_s);
     }
     case GP_OP_CARD_CLOSE:
       return str_field(o, "id", true, &out->m.card_close.id);
@@ -199,7 +209,7 @@ static bool decode_fields(const cJSON *o, gp_msg_t *out) {
       gp_image_begin_t *b = &out->m.image_begin;
       uint32_t w = 0, h = 0;
       if (!str_field(o, "id", true, &b->id) || !stream_field(o, &b->stream) || !u32_field(o, "w", true, 1, 4096, &w) ||
-          !u32_field(o, "h", true, 1, 4096, &h) || !u32_field(o, "ttl_s", false, 0, 86400, &b->ttl_s)) {
+          !u32_field(o, "h", true, 1, 4096, &h) || !lifetime_field(o, "ttl_s", &b->ttl_s)) {
         return false;
       }
       b->w = (uint16_t)w;
@@ -230,9 +240,35 @@ static bool decode_fields(const cJSON *o, gp_msg_t *out) {
   }
 }
 
+/* cJSON parses recursively and allows CJSON_NESTING_LIMIT (1000) levels,
+ * which overflows the gadget task's 16 KiB stack long before (300 levels
+ * did). Nothing in the protocol nests deeply, so the whole document, outer
+ * object included, is capped here before cJSON sees it. */
+#define GP_JSON_DEPTH_MAX 32
+
+static bool depth_ok(const char *s, size_t len) {
+  int depth = 0;
+  bool in_str = false;
+  for (size_t i = 0; i < len; i++) {
+    char c = s[i];
+    if (in_str) {
+      if (c == '\\') i++; /* skip the escaped character */
+      else if (c == '"') in_str = false;
+    } else if (c == '"') {
+      in_str = true;
+    } else if (c == '{' || c == '[') {
+      if (++depth > GP_JSON_DEPTH_MAX) return false;
+    } else if (c == '}' || c == ']') {
+      depth--;
+    }
+  }
+  return true;
+}
+
 gadget_status_t gp_decode(const char *json, size_t len, gp_msg_t *out) {
   if (json == NULL || out == NULL) return GADGET_ERR_ARG;
   memset(out, 0, sizeof *out);
+  if (!depth_ok(json, len)) return GADGET_ERR_PARSE;
   cJSON *root = cJSON_ParseWithLength(json, len);
   if (root == NULL) return GADGET_ERR_PARSE;
   const cJSON *op = cJSON_GetObjectItemCaseSensitive(root, "op");
@@ -259,15 +295,42 @@ void gp_msg_free(gp_msg_t *m) {
 
 /* ---- encoders ------------------------------------------------------------ */
 
+/* Every cJSON add can fail when the heap is short, and a failed add just
+ * leaves its field out. Each encoder ANDs every add into `ok`, and finish()
+ * turns any failure into GADGET_ERR_NO_MEM, so no frame ever goes out with a
+ * required field missing. A NULL where a string is required fails the same
+ * way. */
+
 static cJSON *begin(const char *op) {
   cJSON *o = cJSON_CreateObject();
-  if (o) cJSON_AddStringToObject(o, "op", op);
+  if (o != NULL && cJSON_AddStringToObject(o, "op", op) == NULL) {
+    cJSON_Delete(o);
+    o = NULL;
+  }
   return o;
 }
 
+/* Adds item to o under key; on failure deletes item (NULL is fine). */
+static bool attach(cJSON *o, const char *key, cJSON *item) {
+  if (item != NULL && o != NULL && cJSON_AddItemToObject(o, key, item)) return true;
+  cJSON_Delete(item);
+  return false;
+}
+
+/* Appends item to the array arr; on failure deletes item (NULL is fine). */
+static bool push(cJSON *arr, cJSON *item) {
+  if (item != NULL && arr != NULL && cJSON_AddItemToArray(arr, item)) return true;
+  cJSON_Delete(item);
+  return false;
+}
+
 /* Prints o compactly into buf and frees it; returns the length or an error. */
-static int finish(cJSON *o, char *buf, size_t cap) {
+static int finish(cJSON *o, bool ok, char *buf, size_t cap) {
   if (o == NULL) return GADGET_ERR_NO_MEM;
+  if (!ok) {
+    cJSON_Delete(o);
+    return GADGET_ERR_NO_MEM;
+  }
   char *text = cJSON_PrintUnformatted(o);
   cJSON_Delete(o);
   if (text == NULL) return GADGET_ERR_NO_MEM;
@@ -281,43 +344,53 @@ static int finish(cJSON *o, char *buf, size_t cap) {
   return rc;
 }
 
+/* hello.caps, or NULL when an allocation failed. */
 static cJSON *caps_json(const gadget_board_t *b) {
   cJSON *caps = cJSON_CreateObject();
+  if (caps == NULL) return NULL;
+  bool ok = true;
   cJSON *screen = cJSON_AddObjectToObject(caps, "screen");
-  cJSON_AddNumberToObject(screen, "w", b->screen_w);
-  cJSON_AddNumberToObject(screen, "h", b->screen_h);
-  cJSON_AddBoolToObject(screen, "round", b->screen_round);
-  cJSON_AddStringToObject(screen, "text", "latin1");
+  ok &= cJSON_AddNumberToObject(screen, "w", b->screen_w) != NULL;
+  ok &= cJSON_AddNumberToObject(screen, "h", b->screen_h) != NULL;
+  ok &= cJSON_AddBoolToObject(screen, "round", b->screen_round) != NULL;
+  ok &= cJSON_AddStringToObject(screen, "text", "latin1") != NULL;
   cJSON *image = cJSON_AddObjectToObject(caps, "image");
-  cJSON_AddNumberToObject(image, "w", b->image_w);
-  cJSON_AddNumberToObject(image, "h", b->image_h);
+  ok &= cJSON_AddNumberToObject(image, "w", b->image_w) != NULL;
+  ok &= cJSON_AddNumberToObject(image, "h", b->image_h) != NULL;
   cJSON *mic = cJSON_AddObjectToObject(caps, "mic");
-  cJSON_AddNumberToObject(mic, "rate", b->mic_rate);
+  ok &= cJSON_AddNumberToObject(mic, "rate", b->mic_rate) != NULL;
   if (b->speaker_rate != 0) {
     cJSON *spk = cJSON_AddObjectToObject(caps, "speaker");
-    cJSON_AddNumberToObject(spk, "rate", b->speaker_rate);
+    ok &= cJSON_AddNumberToObject(spk, "rate", b->speaker_rate) != NULL;
   }
   cJSON *input = cJSON_AddArrayToObject(caps, "input");
-  if (b->input_mask & GADGET_INPUT_TOUCH) cJSON_AddItemToArray(input, cJSON_CreateString("touch"));
-  if (b->input_mask & GADGET_INPUT_TALK) cJSON_AddItemToArray(input, cJSON_CreateString("talk"));
-  if (b->input_mask & GADGET_INPUT_CANCEL) cJSON_AddItemToArray(input, cJSON_CreateString("cancel"));
-  if (b->has_battery) cJSON_AddTrueToObject(caps, "battery");
+  ok &= input != NULL;
+  if (b->input_mask & GADGET_INPUT_TOUCH) ok &= push(input, cJSON_CreateString("touch"));
+  if (b->input_mask & GADGET_INPUT_TALK) ok &= push(input, cJSON_CreateString("talk"));
+  if (b->input_mask & GADGET_INPUT_CANCEL) ok &= push(input, cJSON_CreateString("cancel"));
+  if (b->has_battery) ok &= cJSON_AddTrueToObject(caps, "battery") != NULL;
   cJSON *ota = cJSON_AddObjectToObject(caps, "ota");
-  cJSON_AddNumberToObject(ota, "max", b->ota_max);
+  ok &= cJSON_AddNumberToObject(ota, "max", b->ota_max) != NULL;
+  if (!ok) {
+    cJSON_Delete(caps);
+    return NULL;
+  }
   return caps;
 }
 
 int gp_encode_hello(char *buf, size_t cap, const gp_hello_t *m) {
   cJSON *o = begin("hello");
   if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddNumberToObject(o, "proto", GADGET_PROTO_VERSION);
-  cJSON_AddStringToObject(o, "id", m->id);
-  cJSON_AddStringToObject(o, "pubkey", m->pubkey_b64);
-  cJSON_AddStringToObject(o, "name", m->name);
-  cJSON_AddStringToObject(o, "board", m->board->id);
-  cJSON_AddStringToObject(o, "fw", m->fw);
-  cJSON_AddItemToObject(o, "caps", caps_json(m->board));
+  bool ok = true;
+  ok &= cJSON_AddNumberToObject(o, "proto", GADGET_PROTO_VERSION) != NULL;
+  ok &= cJSON_AddStringToObject(o, "id", m->id) != NULL;
+  ok &= cJSON_AddStringToObject(o, "pubkey", m->pubkey_b64) != NULL;
+  ok &= cJSON_AddStringToObject(o, "name", m->name) != NULL;
+  ok &= cJSON_AddStringToObject(o, "board", m->board->id) != NULL;
+  ok &= cJSON_AddStringToObject(o, "fw", m->fw) != NULL;
+  ok &= attach(o, "caps", caps_json(m->board));
   cJSON *actions = cJSON_AddArrayToObject(o, "actions");
+  ok &= actions != NULL;
   for (uint8_t i = 0; i < m->n_actions; i++) {
     const gp_action_decl_t *a = &m->actions[i];
     cJSON *params = a->params_json ? cJSON_Parse(a->params_json) : NULL;
@@ -327,137 +400,124 @@ int gp_encode_hello(char *buf, size_t cap, const gp_hello_t *m) {
         return GADGET_ERR_ARG;
       }
       params = cJSON_CreateObject();
-      cJSON_AddStringToObject(params, "type", "object");
-      cJSON_AddObjectToObject(params, "properties");
+      ok &= cJSON_AddStringToObject(params, "type", "object") != NULL;
+      ok &= cJSON_AddObjectToObject(params, "properties") != NULL;
     }
     cJSON *it = cJSON_CreateObject();
-    cJSON_AddStringToObject(it, "name", a->name);
-    cJSON_AddStringToObject(it, "description", a->description);
-    cJSON_AddItemToObject(it, "params", params);
-    cJSON_AddStringToObject(it, "risk", a->risk == GADGET_RISK_SAFE ? "safe" : "confirm");
-    cJSON_AddItemToArray(actions, it);
+    ok &= cJSON_AddStringToObject(it, "name", a->name) != NULL;
+    ok &= cJSON_AddStringToObject(it, "description", a->description) != NULL;
+    ok &= attach(it, "params", params);
+    ok &= cJSON_AddStringToObject(it, "risk", a->risk == GADGET_RISK_SAFE ? "safe" : "confirm") != NULL;
+    ok &= push(actions, it);
   }
   cJSON *sensors = cJSON_AddObjectToObject(o, "sensors");
+  ok &= sensors != NULL;
   if (m->battery_valid) {
-    cJSON_AddNumberToObject(sensors, "battery_pct", m->battery_pct);
-    cJSON_AddBoolToObject(sensors, "charging", m->charging);
+    ok &= cJSON_AddNumberToObject(sensors, "battery_pct", m->battery_pct) != NULL;
+    ok &= cJSON_AddBoolToObject(sensors, "charging", m->charging) != NULL;
   }
-  return finish(o, buf, cap);
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_prove(char *buf, size_t cap, const gp_prove_t *m) {
   cJSON *o = begin("prove");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddStringToObject(o, "sig", m->sig_b64);
-  if (m->enroll) cJSON_AddStringToObject(o, "enroll", m->enroll);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddStringToObject(o, "sig", m->sig_b64) != NULL;
+  if (m->enroll) ok &= cJSON_AddStringToObject(o, "enroll", m->enroll) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_voice_begin(char *buf, size_t cap, const gp_voice_begin_t *m) {
   cJSON *o = begin("voice.begin");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddStringToObject(o, "turn", m->turn);
-  cJSON_AddNumberToObject(o, "stream", m->stream);
-  cJSON_AddNumberToObject(o, "rate", m->rate);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddStringToObject(o, "turn", m->turn) != NULL;
+  ok &= cJSON_AddNumberToObject(o, "stream", m->stream) != NULL;
+  ok &= cJSON_AddNumberToObject(o, "rate", m->rate) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_voice_end(char *buf, size_t cap, const gp_voice_end_t *m) {
   cJSON *o = begin("voice.end");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddStringToObject(o, "turn", m->turn);
-  cJSON_AddNumberToObject(o, "ms", m->ms);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddStringToObject(o, "turn", m->turn) != NULL;
+  ok &= cJSON_AddNumberToObject(o, "ms", m->ms) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_voice_drop(char *buf, size_t cap, const gp_voice_drop_t *m) {
   cJSON *o = begin("voice.drop");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddStringToObject(o, "turn", m->turn);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddStringToObject(o, "turn", m->turn) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_say(char *buf, size_t cap, const gp_say_t *m) {
   cJSON *o = begin("say");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddStringToObject(o, "turn", m->turn);
-  cJSON_AddStringToObject(o, "text", m->text);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddStringToObject(o, "turn", m->turn) != NULL;
+  ok &= cJSON_AddStringToObject(o, "text", m->text) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_stop(char *buf, size_t cap, const gp_stop_t *m) {
   cJSON *o = begin("stop");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  if (m->turn) cJSON_AddStringToObject(o, "turn", m->turn);
-  return finish(o, buf, cap);
+  bool ok = true;
+  if (m->turn) ok &= cJSON_AddStringToObject(o, "turn", m->turn) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_answer(char *buf, size_t cap, const gp_answer_t *m) {
   cJSON *o = begin("answer");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddStringToObject(o, "id", m->id);
-  cJSON_AddStringToObject(o, "option", m->option);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddStringToObject(o, "id", m->id) != NULL;
+  ok &= cJSON_AddStringToObject(o, "option", m->option) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_act_result(char *buf, size_t cap, const gp_act_result_t *m) {
   cJSON *o = begin("act.result");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddStringToObject(o, "id", m->id);
-  cJSON_AddBoolToObject(o, "ok", m->ok);
-  if (m->data != NULL && m->data->child != NULL) {
-    cJSON_AddItemToObject(o, "data", cJSON_Duplicate(m->data, true));
-  }
-  if (m->error) cJSON_AddStringToObject(o, "error", m->error);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddStringToObject(o, "id", m->id) != NULL;
+  ok &= cJSON_AddBoolToObject(o, "ok", m->ok) != NULL;
+  if (m->data != NULL && m->data->child != NULL) ok &= attach(o, "data", cJSON_Duplicate(m->data, true));
+  if (m->error) ok &= cJSON_AddStringToObject(o, "error", m->error) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_sense(char *buf, size_t cap, const gp_sense_t *m) {
   cJSON *o = begin("sense");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
+  bool ok = true;
   if (m->battery_valid) {
-    cJSON_AddNumberToObject(o, "battery_pct", m->battery_pct);
-    cJSON_AddBoolToObject(o, "charging", m->charging);
+    ok &= cJSON_AddNumberToObject(o, "battery_pct", m->battery_pct) != NULL;
+    ok &= cJSON_AddBoolToObject(o, "charging", m->charging) != NULL;
   }
-  return finish(o, buf, cap);
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_event(char *buf, size_t cap, const gp_event_msg_t *m) {
   cJSON *o = begin("event");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddStringToObject(o, "name", m->name);
-  if (m->data) cJSON_AddItemToObject(o, "data", cJSON_Duplicate(m->data, true));
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddStringToObject(o, "name", m->name) != NULL;
+  if (m->data) ok &= attach(o, "data", cJSON_Duplicate(m->data, true));
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_fw_ready(char *buf, size_t cap, const gp_fw_ready_t *m) {
   cJSON *o = begin("fw.ready");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddNumberToObject(o, "stream", m->stream);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddNumberToObject(o, "stream", m->stream) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_fw_fail(char *buf, size_t cap, const gp_fw_fail_t *m) {
   cJSON *o = begin("fw.fail");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddNumberToObject(o, "stream", m->stream);
-  cJSON_AddStringToObject(o, "code", m->code);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddNumberToObject(o, "stream", m->stream) != NULL;
+  ok &= cJSON_AddStringToObject(o, "code", m->code) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_fw_progress(char *buf, size_t cap, const gp_fw_progress_t *m) {
   cJSON *o = begin("fw.progress");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddNumberToObject(o, "stream", m->stream);
-  cJSON_AddNumberToObject(o, "offset", m->offset);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddNumberToObject(o, "stream", m->stream) != NULL;
+  ok &= cJSON_AddNumberToObject(o, "offset", m->offset) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 int gp_encode_fw_installed(char *buf, size_t cap, const gp_fw_installed_t *m) {
   cJSON *o = begin("fw.installed");
-  if (o == NULL) return GADGET_ERR_NO_MEM;
-  cJSON_AddStringToObject(o, "version", m->version);
-  return finish(o, buf, cap);
+  bool ok = cJSON_AddStringToObject(o, "version", m->version) != NULL;
+  return finish(o, ok, buf, cap);
 }
 
 /* ---- binary frames -------------------------------------------------------- */

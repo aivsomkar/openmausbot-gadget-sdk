@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The PSA adapter (core/src/crypto_psa.c) against RFC 6979 A.2.5 and the
  * contract's fixed values (§1.7). Runs on mbedTLS 3.6.7 and 4.2.0. */
+#include <stdio.h>
 #include <string.h>
 #include "gadget_hal.h"
 #include "gadget_proto.h"
@@ -124,6 +125,18 @@ static void test_sha256_one_shot_and_multi_part(void) {
   TEST_ASSERT_EQUAL_INT(GADGET_OK, hal_crypto_sha256_begin(&ctx));
   hal_crypto_sha256_abort(&ctx);
   TEST_ASSERT_NULL(ctx.op);
+  /* begin on a live context aborts the old operation and starts over; an
+   * operation left behind shows up as a leak under -DGADGET_SANITIZE=ON on
+   * Linux, where LeakSanitizer runs */
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, hal_crypto_sha256_begin(&ctx));
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, hal_crypto_sha256_update(&ctx, "stale", 5));
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, hal_crypto_sha256_begin(&ctx));
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, hal_crypto_sha256_update(&ctx, "abc", 3));
+  memset(b, 0, sizeof b);
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, hal_crypto_sha256_finish(&ctx, b));
+  TEST_ASSERT_EQUAL_MEMORY(a, b, 32);
+  TEST_ASSERT_NULL(ctx.op);
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_ARG, hal_crypto_sha256_begin(NULL));
 }
 
 static void test_random(void) {
@@ -134,7 +147,11 @@ static void test_random(void) {
 }
 
 int main(void) {
-  TEST_ASSERT_EQUAL_INT(PSA_SUCCESS, psa_crypto_init());
+  /* not a TEST_ASSERT: outside RUN_TEST, Unity has no frame to jump back to */
+  if (psa_crypto_init() != PSA_SUCCESS) {
+    fprintf(stderr, "psa_crypto_init failed\n");
+    return 3;
+  }
   UNITY_BEGIN();
   RUN_TEST(test_pubkey_and_id_from_rfc_key);
   RUN_TEST(test_rfc6979_signatures_are_reproduced_without_s_normalization);

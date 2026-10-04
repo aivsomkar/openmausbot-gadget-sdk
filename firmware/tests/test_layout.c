@@ -18,37 +18,49 @@ static bool overlap(gadget_rect_t a, gadget_rect_t b) {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
+/* Contract §2.3's table, every column, in table order. */
+#define TOUCH GADGET_INPUT_TOUCH
+#define TALK GADGET_INPUT_TALK
+#define CANCEL GADGET_INPUT_CANCEL
+static const gadget_board_t EXPECTED[] = {
+    /* id, display_name, screen w, h, round, image w, h, mic, speaker, input, battery, ota_max, art */
+    {"amoled-175c", "Waveshare ESP32-S3-Touch-AMOLED-1.75C", 466, 466, true, 300, 300, 16000, 16000,
+     TOUCH | TALK | CANCEL, true, 6291456, GADGET_ART_S240},
+    {"amoled-175", "Waveshare ESP32-S3-Touch-AMOLED-1.75", 466, 466, true, 300, 300, 16000, 16000,
+     TOUCH | TALK, true, 6291456, GADGET_ART_S240},
+    {"lcd-154", "Waveshare ESP32-S3-LCD-1.54", 240, 240, false, 200, 200, 16000, 16000,
+     TALK | CANCEL, true, 6291456, GADGET_ART_S150},
+    {"devkit", "ESP32-S3-DevKitC-1-N16R8 + 2\" ST7789", 320, 240, false, 280, 200, 16000, 24000,
+     TALK | CANCEL, false, 6291456, GADGET_ART_S150},
+};
+#define N_EXPECTED (sizeof EXPECTED / sizeof EXPECTED[0])
+
 static void test_board_table_matches_contract(void) {
-  const gadget_board_t *b = gadget_board_by_id("amoled-175c");
-  TEST_ASSERT_NOT_NULL(b);
-  TEST_ASSERT_EQUAL_STRING("Waveshare ESP32-S3-Touch-AMOLED-1.75C", b->display_name);
-  TEST_ASSERT_EQUAL_UINT16(466, b->screen_w);
-  TEST_ASSERT_TRUE(b->screen_round);
-  TEST_ASSERT_EQUAL_UINT32(GADGET_INPUT_TOUCH | GADGET_INPUT_TALK | GADGET_INPUT_CANCEL, b->input_mask);
-  TEST_ASSERT_EQUAL_INT(GADGET_ART_S240, b->art_profile);
-  b = gadget_board_by_id("amoled-175");
-  TEST_ASSERT_EQUAL_UINT32(GADGET_INPUT_TOUCH | GADGET_INPUT_TALK, b->input_mask);
-  b = gadget_board_by_id("lcd-154");
-  TEST_ASSERT_EQUAL_UINT16(240, b->screen_w);
-  TEST_ASSERT_EQUAL_UINT16(200, b->image_w);
-  TEST_ASSERT_TRUE(b->has_battery);
-  TEST_ASSERT_EQUAL_INT(GADGET_ART_S150, b->art_profile);
-  b = gadget_board_by_id("devkit");
-  TEST_ASSERT_EQUAL_UINT32(24000, b->speaker_rate);
-  TEST_ASSERT_FALSE(b->has_battery);
-  TEST_ASSERT_EQUAL_UINT16(280, b->image_w);
-  TEST_ASSERT_EQUAL_UINT16(200, b->image_h);
+  size_t n = 0;
+  while (gadget_board_at(n) != NULL) n++;
+  TEST_ASSERT_EQUAL_size_t(N_EXPECTED, n);
+  for (size_t i = 0; i < N_EXPECTED; i++) {
+    const gadget_board_t *e = &EXPECTED[i], *b = gadget_board_at(i);
+    TEST_ASSERT_NOT_NULL(b);
+    TEST_ASSERT_EQUAL_STRING(e->id, b->id);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(e->display_name, b->display_name, e->id);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(e->screen_w, b->screen_w, e->id);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(e->screen_h, b->screen_h, e->id);
+    TEST_ASSERT_EQUAL_MESSAGE(e->screen_round, b->screen_round, e->id);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(e->image_w, b->image_w, e->id);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(e->image_h, b->image_h, e->id);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(e->mic_rate, b->mic_rate, e->id);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(e->speaker_rate, b->speaker_rate, e->id);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(e->input_mask, b->input_mask, e->id);
+    TEST_ASSERT_EQUAL_MESSAGE(e->has_battery, b->has_battery, e->id);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(e->ota_max, b->ota_max, e->id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(e->art_profile, b->art_profile, e->id);
+    TEST_ASSERT_TRUE(strlen(b->id) >= 1 && strlen(b->id) <= 32);
+    TEST_ASSERT_EQUAL_PTR(b, gadget_board_by_id(e->id));
+  }
+  TEST_ASSERT_NULL(gadget_board_at(N_EXPECTED));
   TEST_ASSERT_NULL(gadget_board_by_id("nope"));
   TEST_ASSERT_NULL(gadget_board_by_id(NULL));
-  size_t n = 0;
-  while (gadget_board_at(n) != NULL) {
-    const gadget_board_t *x = gadget_board_at(n);
-    TEST_ASSERT_EQUAL_UINT32(6291456, x->ota_max);
-    TEST_ASSERT_EQUAL_UINT32(16000, x->mic_rate);
-    TEST_ASSERT_TRUE(strlen(x->id) <= 32);
-    n++;
-  }
-  TEST_ASSERT_EQUAL_size_t(4, n);
 }
 
 static void test_safe_area(void) {
