@@ -1,0 +1,10 @@
+node_modules/
+/build/
+firmware/ports/esp32/build/
+firmware/ports/esp32/sdkconfig
+firmware/ports/esp32/sdkconfig.old
+firmware/ports/esp32/managed_components/
+site/dist/
+tools/art/out/
+*_err.png
+.DS_Store

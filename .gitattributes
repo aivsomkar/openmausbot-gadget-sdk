@@ -1,0 +1,3 @@
+protocol/vectors/** -text
+keys/** -text
+*.png binary
