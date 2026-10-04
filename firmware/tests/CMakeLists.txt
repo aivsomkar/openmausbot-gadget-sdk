@@ -26,6 +26,7 @@ gadget_pure_test(crypto)
 gadget_pure_test(layout)
 gadget_pure_test(console_parse)
 gadget_unit_test(core_init)
+gadget_unit_test(session)
 
 # protocol/vectors in C (label vectors).
 add_executable(test_vectors test_vectors.c)

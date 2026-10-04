@@ -10,6 +10,8 @@ set(GADGET_CORE_SRCS
   src/ui_layout.c
   src/console.c
   src/core.c
+  src/session.c
+  src/screens.c
 )
 
 if(ESP_PLATFORM)

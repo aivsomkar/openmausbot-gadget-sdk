@@ -213,6 +213,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
   gadget_hex_encode(g_core.turn_prefix + 1, rnd, sizeof rnd);
 
   publish_identity();
+  session_init();
   if (g_core.wifi_ssid[0] != '\0') hal_wifi_connect(g_core.wifi_ssid, g_core.wifi_pass);
 
   cJSON *boot = cJSON_CreateObject();
@@ -231,9 +232,19 @@ gadget_status_t core_init(const core_config_t *cfg) {
 void core_event(const gadget_event_t *ev) {
   if (!g_core.initialized || ev == NULL) return;
   switch (ev->type) {
+    case GADGET_EV_WIFI_STATE:
+    case GADGET_EV_WS_OPEN:
+    case GADGET_EV_WS_TEXT:
+    case GADGET_EV_WS_BINARY:
+    case GADGET_EV_WS_CONTROL:
+    case GADGET_EV_WS_CLOSED:
+    case GADGET_EV_MDNS:
+      session_event(ev);
+      break;
     default:
       break;
   }
+  screens_update();
   model_commit();
 }
 
@@ -242,20 +253,53 @@ void core_tick(uint64_t now_ms) {
   g_core.now = now_ms;
   g_core.model.now_ms = now_ms;
   g_core.ticked = true;
+  session_tick();
+  screens_update();
   model_commit();
 }
 
 const ui_model_t *core_ui_model(void) { return &g_core.model; }
 
 void core_deinit(void) {
+  if (g_core.initialized) session_deinit();
   memset(&g_core, 0, sizeof g_core);
   memset(&s_shadow, 0, sizeof s_shadow);
 }
 
 const char *core_device_id(void) { return g_core.id; }
+core_pair_state_t core_pair_state(void) { return session_pair_state(); }
+const char *core_last_error(void) { return session_last_error(); }
 const char *core_fw_version(void) { return g_core.fw; }
 
 void core_set_tap(core_tap_fn fn, void *ctx) {
   s_tap = fn;
   s_tap_ctx = ctx;
+}
+
+void core_tap(core_tap_dir_t dir, const char *op, const char *json, size_t len) {
+  if (s_tap != NULL) s_tap(dir, op, json, len, s_tap_ctx);
+}
+
+/* ---- session hooks ------------------------------------------------------------------ */
+
+void core_on_ready(void) { hal_log(GADGET_LOG_INFO, CORE_TAG, "talking to %s", g_core.bot_name); }
+
+void core_on_session_lost(void) { hal_log(GADGET_LOG_INFO, CORE_TAG, "session lost"); }
+
+void core_on_msg(const gp_msg_t *m) {
+  switch (m->op) {
+    default:
+      hal_log(GADGET_LOG_DEBUG, CORE_TAG, "ignored %s", gp_op_name(m->op));
+      break;
+  }
+}
+
+void core_on_binary(gp_bin_kind_t kind, uint8_t stream, const uint8_t *payload, size_t len) {
+  (void)payload;
+  switch (kind) {
+    default:
+      hal_log(GADGET_LOG_DEBUG, CORE_TAG, "ignored binary kind %d stream %u (%u bytes)", (int)kind, (unsigned)stream,
+              (unsigned)len);
+      break;
+  }
 }

@@ -71,5 +71,37 @@ void core_set_name(const char *src);
 void core_next_turn_id(char out[GADGET_TURN_MAX + 1]);
 /* Print "@omb " + the compact JSON of obj on the console; frees obj. */
 void core_omb(cJSON *obj);
+/* The protocol tap (core_set_tap) for one text frame. */
+void core_tap(core_tap_dir_t dir, const char *op, const char *json, size_t len);
+/* Session hooks: core.c hands these to the modules. */
+void core_on_ready(void);                       /* a ready arrived */
+void core_on_session_lost(void);                /* a ready session ended */
+void core_on_msg(const gp_msg_t *m);            /* a host op after ready (not handshake or settings) */
+void core_on_binary(gp_bin_kind_t kind, uint8_t stream, const uint8_t *payload, size_t len);
+
+/* ---- session.c -------------------------------------------------------------- */
+/* The shared encode buffer: encode into it, then session_send() it. */
+extern char g_core_tx[GADGET_TEXT_FRAME_MAX];
+void session_init(void);
+void session_deinit(void);
+void session_event(const gadget_event_t *ev);   /* Wi-Fi, WS_* and mDNS events */
+void session_tick(void);
+bool session_ready(void);
+/* Tap and send one encoded text frame; len < 0 (an encoder error) is returned as is. */
+gadget_status_t session_send(const char *op, const char *json, int len);
+gadget_status_t session_send_binary(const uint8_t *frame, size_t len);
+/* `pair`, `host`: drop any connection and connect again at once. */
+void session_reconnect_now(bool clear_error);
+/* TALK while halted by `replaced`: reconnect. */
+void session_wake(void);
+/* `host`, `host auto` and `forget`: drop the last challenge's host_name. */
+void session_clear_host_name(void);
+core_pair_state_t session_pair_state(void);
+const char *session_last_error(void);
+const char *session_host_in_use(void);          /* "addr:port", or NULL when unknown */
+bool session_is_setup(void);                    /* never paired (no host_id) */
+
+/* ---- screens.c -------------------------------------------------------------- */
+void screens_update(void);
 
 #endif /* CORE_INTERNAL_H */
