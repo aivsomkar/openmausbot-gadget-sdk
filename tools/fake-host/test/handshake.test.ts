@@ -10,8 +10,10 @@ import { b64Encode } from "../../../protocol/lib/encoding.ts";
 import { proveText } from "../../../protocol/lib/identity.ts";
 import { signP256 } from "../../../protocol/lib/verify.ts";
 import { startFakeHost, type FakeHost } from "../src/server.ts";
-import type { FakeHostOptions } from "../src/options.ts";
-import type { HostEvent } from "../src/context.ts";
+import { DEFAULT_OPTIONS, type FakeHostOptions } from "../src/options.ts";
+import type { HostContext, HostEvent } from "../src/context.ts";
+import { GadgetSession, type WsLike } from "../src/session.ts";
+import { HostState } from "../src/state.ts";
 import { connectGadget, delay, helloFor, nextEvent, openSocket, randomKey, tryUpgrade } from "./gadget-client.ts";
 
 async function host(t: TestContext, o: Partial<FakeHostOptions> = {}): Promise<{ h: FakeHost; events: HostEvent[] }> {
@@ -202,6 +204,53 @@ test("revoke sends error revoked, forgets the gadget, and replace / drop / close
   assert.equal((await d.gadget.closed).code, 1006);
   const ack = await h.command({ cmd: "drop" });
   assert.deepEqual([ack.ok, ack.error], [false, `gadget ${d.gadget.id} is not connected`]);
+});
+
+test("close accepts only 1000 and 3000-4999; a refused code leaves the session working", async (t) => {
+  const { h } = await host(t, { replyIntervalMs: 20, toneMs: 0 });
+  const { gadget } = await connectGadget({ port: h.port, enroll: "123456" });
+  for (const code of [1006, 1005, 1001, 999, 2999, 5000, 1.5]) {
+    const ack = await h.command({ cmd: "close", code });
+    assert.deepEqual([ack.ok, ack.error], [false, code === 1.5 ? "code must be an integer" : "code must be 1000 or 3000-4999"], String(code));
+  }
+  gadget.send({ op: "say", turn: "t00000001-1", text: "still there?" });
+  assert.deepEqual(await gadget.next("done", () => true, 5000), { op: "done", turn: "t00000001-1", outcome: "ok" });
+  assert.equal((await h.command({ cmd: "card", title: "x" })).ok, true);
+  assert.equal((await gadget.next("card")).title, "x");
+  assert.equal((await h.command({ cmd: "close", code: 4999 })).ok, true);
+  assert.equal((await gadget.closed).code, 4999);
+});
+
+test("GadgetSession.close leaves the session open and sending when the socket refuses the close code", () => {
+  const handlers = new Map<string, (...args: any[]) => void>();
+  const sent: unknown[] = [];
+  let closedWith: number | null = null;
+  const ws: WsLike = {
+    send: (data) => void sent.push(data),
+    close(code) {
+      if (code === 1006) throw new TypeError("First argument must be a valid error code number");
+      closedWith = code ?? null;
+    },
+    terminate() {},
+    ping() {},
+    on: (event, listener) => void handlers.set(event, listener),
+    bufferedAmount: 0,
+  };
+  const ctx: HostContext = {
+    options: DEFAULT_OPTIONS, state: HostState.load({ stateDir: null, hostId: null, hostName: "x" }), script: { heard: "", reply: "" },
+    emit() {}, log() {}, live: () => null,
+  };
+  const s = new GadgetSession(ws, "test", ctx, { takeOver() {}, attach() {}, closed() {} });
+  try {
+    assert.throws(() => s.close(1006), /valid error code/);
+    assert.equal(s.send({ op: "card.close", id: "a" }), true, "not marked as closing");
+    s.close(1000);
+    assert.equal(closedWith, 1000);
+    assert.equal(s.send({ op: "card.close", id: "b" }), false, "closing now");
+    assert.equal(sent.length, 1);
+  } finally {
+    handlers.get("close")!(1000);   // clears the session's timers
+  }
 });
 
 test("commands: unknown names, a missing gadget and bad codes are refused with an ack", async (t) => {

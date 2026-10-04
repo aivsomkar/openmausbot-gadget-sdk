@@ -147,6 +147,8 @@ export async function startFakeHost(partial: Partial<FakeHostOptions> = {}, star
     close(call) {
       const code = call.cmd.code ?? 1000;
       if (typeof code !== "number" || !Number.isInteger(code)) throw new Error("code must be an integer");
+      // The codes an application may send (RFC 6455 §7.4); `ws` throws on 1005, 1006 and the like.
+      if (code !== 1000 && (code < 3000 || code > 4999)) throw new Error("code must be 1000 or 3000-4999");
       call.session().close(code);
     },
     async quit() {

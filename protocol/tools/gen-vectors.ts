@@ -269,6 +269,10 @@ function versions(): Json {
     // identifiers compare by value, and an empty pre-release identifier is alphanumeric.
     ["leading-zero-core", "1.01.0", "1.1.0", 0], ["leading-zero-prerelease", "1.1.0-rc.01", "1.1.0-rc.1", 0],
     ["empty-ident-vs-numeric", "1.0.0-rc..1", "1.0.0-rc.1", 1], ["empty-ident-vs-alpha", "1.0.0-.", "1.0.0-a", -1],
+    // The pattern puts no limit on digits: numeric identifiers compare by exact integer value,
+    // past 2^53 (a double) and 2^64 (a u64) alike.
+    ["big-numeric-prerelease", "1.0.0-rc.9007199254740993", "1.0.0-rc.9007199254740992", 1],
+    ["big-numeric-core", "9007199254740993.0.0", "9007199254740992.0.0", 1],
   ].map(([name, a, b, cmp]) => ({ name, a, b, cmp }));
   const custom = [
     ["dev-zero", "0.0.0-dev", true], ["dev-tagged", "1.2.0-dev", true], ["release", "1.2.0", false], ["prerelease", "1.2.0-rc.1", false],

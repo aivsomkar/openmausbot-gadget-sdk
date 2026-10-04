@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // node tools/fake-host/src/main.ts [options]   (see tools/fake-host/README.md)
-// Events go to stdout as JSON lines, logs to stderr; commands are read from stdin. The process
-// exits 0 after `quit`, when stdin ends, or on SIGINT/SIGTERM; 2 on bad options; 1 if it cannot start.
+// Events go to stdout as JSON lines, logs to stderr. Commands are read from stdin when it is a
+// pipe, socket or file; then the process exits 0 after `quit` or when stdin ends. From a terminal,
+// /dev/null or a background job (`… &`) stdin is left alone and the host serves until SIGINT/SIGTERM.
+// It exits 0 on SIGINT/SIGTERM, 2 on bad options and 1 if it cannot start.
+import { fstatSync } from "node:fs";
 import { formatEvent, runControl } from "./control.ts";
 import { parseCli, type FakeHostOptions } from "./options.ts";
 import { startFakeHost, type FakeHost } from "./server.ts";
@@ -41,5 +44,17 @@ async function stop(): Promise<never> {
 process.on("SIGINT", () => void stop());
 process.on("SIGTERM", () => void stop());
 
-await runControl(host, process.stdin, write);
-await stop();
+// A background job reads EOF from /dev/null in a script and is stopped by SIGTTIN if it reads a
+// terminal, so only a driver's pipe (or a file) is a control channel.
+let control = false;
+try {
+  const st = fstatSync(0);
+  control = st.isFIFO() || st.isSocket() || st.isFile();
+} catch {
+  // fd 0 is closed
+}
+if (control) {
+  await runControl(host, process.stdin, write);
+  await stop();
+}
+// Otherwise the listening server keeps the process alive until SIGINT/SIGTERM.

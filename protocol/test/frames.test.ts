@@ -41,6 +41,12 @@ test("compareVersions follows SemVer 2.0.0 precedence", () => {
   assert.equal(compareVersions("1.1.0-rc", "1.1.0-rc.1"), -1);
   assert.equal(compareVersions("1.1.0-1", "1.1.0-a"), -1);
   assert.equal(compareVersions("2.0.0", "2.0.0"), 0);
+  // Exact integer values, whatever their length (PROTOCOL.md §4.1).
+  assert.equal(compareVersions("1.0.0-rc.9007199254740993", "1.0.0-rc.9007199254740992"), 1);
+  assert.equal(compareVersions("9007199254740992.0.0", "9007199254740993.0.0"), -1);
+  assert.equal(compareVersions("1.0.0-rc.18446744073709551617", "1.0.0-rc.18446744073709551616"), 1);
+  assert.equal(compareVersions("1.0.0-rc.0009007199254740993", "1.0.0-rc.9007199254740993"), 0);
+  assert.equal(compareVersions("10.0.0", "9.99999999999999999999.0"), 1);
   assert.throws(() => compareVersions("v1.0.0", "1.0.0"), /version/);
 });
 

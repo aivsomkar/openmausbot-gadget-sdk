@@ -7,7 +7,9 @@ npm ci
 node tools/fake-host/src/main.ts --port 8810 --code 123456
 ```
 
-It prints one six-digit pairing code and enrolls only with that code (120 s, 5 attempts, single use, like MausBot). Any other code gets `bad_code`. Point a gadget at it with the console commands `host 127.0.0.1:8810` and `pair 123456` (or the simulator's `--host` and `--pair`). To serve a real board on your network, add `--bind 0.0.0.0`.
+It prints one six-digit pairing code and enrolls only with that code (120 s, 5 attempts, single use, like MausBot). Any other code gets `bad_code`. The simulator uses `--host 127.0.0.1:8810 --pair 123456`. For a real board, start the fake host with `--bind 0.0.0.0` and give the board `host <this computer's LAN address>:8810` and `pair 123456` on its console. The fake host does not advertise mDNS, so `host auto` will not find it.
+
+Commands are read from stdin when it is a pipe or file. From a terminal or in the background (`… &`) it leaves stdin alone and runs until Ctrl-C/SIGTERM, so a script can start it with `&` and stop it with `kill`.
 
 ## What it does
 
@@ -39,7 +41,7 @@ It prints one six-digit pairing code and enrolls only with that code (120 s, 5 a
 
 ## Control: JSON lines
 
-Commands go to stdin, one JSON object per line. Events come out on stdout, one JSON object per line; logs go to stderr. Every command may name `"gadget": "<id>"` (default: the most recently ready gadget) and gets exactly one `{"event": "ack", "cmd": …, "ok": true}` or `{"event": "ack", "cmd": …, "ok": false, "error": "…"}`. A line that is not a command gets an ack with `"cmd": null`. The process exits 0 after `quit` or when stdin ends.
+Commands go to stdin, one JSON object per line, when stdin is a pipe or file; from a terminal or in the background it runs until Ctrl-C/SIGTERM (to type commands by hand, start it as `cat | node tools/fake-host/src/main.ts …`). Events come out on stdout, one JSON object per line; logs go to stderr. Every command may name `"gadget": "<id>"` (default: the most recently ready gadget) and gets exactly one `{"event": "ack", "cmd": …, "ok": true}` or `{"event": "ack", "cmd": …, "ok": false, "error": "…"}`. A command whose frame is over the 16 KiB text limit, or whose gadget is already closing, gets `ok: false` and sends nothing (an `ask` acked with `queued: true` is sent once the asks before it close; `settings` for an offline gadget arrive with its next `ready`). A line that is not a command gets an ack with `"cmd": null`. With a stdin pipe, the process exits 0 after `quit` or when stdin ends; it always exits 0 on SIGINT/SIGTERM.
 
 | Command | Fields | Effect |
 |---|---|---|
@@ -56,7 +58,7 @@ Commands go to stdin, one JSON object per line. Events come out on stdout, one J
 | `revoke` | | forget the gadget and send `error revoked` if it is connected |
 | `replace` | | send `error replaced` and close |
 | `drop` | | destroy the socket without a close frame |
-| `close` | `code?` | close frame (default 1000) |
+| `close` | `code?` | close frame: 1000 (the default) or 3000–4999 |
 | `quit` | | close every gadget (1001) and exit 0 |
 
 | Event | Fields |
@@ -76,7 +78,7 @@ Commands go to stdin, one JSON object per line. Events come out on stdout, one J
 Example session:
 
 ```
-$ node tools/fake-host/src/main.ts --port 8810 --code 123456 --quiet
+$ cat | node tools/fake-host/src/main.ts --port 8810 --code 123456 --quiet
 {"event":"listening","port":8810,"host_id":"…"}
 {"event":"code","code":"123456","expires_at":1791131434536}
 {"event":"connected","remote":"127.0.0.1:53122"}

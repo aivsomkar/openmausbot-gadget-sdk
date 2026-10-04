@@ -155,8 +155,9 @@ export class GadgetSession {
   }
   close(code = 1000, reason = ""): void {
     if (this.phase === "closed" || this.closing) return;
-    this.closing = true;
+    // ws.close() throws on a code it may not send; the session then stays open, not half-closed.
     this.ws.close(code, reason);
+    this.closing = true;
   }
   terminate(): void {
     this.closing = true;

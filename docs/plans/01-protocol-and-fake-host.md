@@ -3888,10 +3888,16 @@ test("a voice turn: heard, working, three cumulative replies, final, paced speec
 });
 
 test("speech is paced to real time, never more than 0.5 s ahead", async (t) => {
-  const { gadget } = await setup(t, { toneMs: 1200 });
+  const { h, gadget } = await setup(t, { toneMs: 1200 });
+  // Time from the host's own speak.begin send: the tx event is emitted synchronously, before
+  // the host starts its pacing clock, so a stall in this test's event loop cannot skew it.
+  let t0 = 0;
+  h.on((e) => {
+    if (e.event === "tx" && typeof e.msg === "string" && JSON.parse(e.msg).op === "speak.begin") t0 = Date.now();
+  });
   gadget.send({ op: "say", turn: "t00000001-1", text: "hi" });
   await gadget.next("speak.begin", () => true, 5000);
-  const t0 = Date.now();
+  assert.ok(t0 > 0, "the host emitted tx for speak.begin");
   let audioMs = 0;
   let worst = 0;
   for (;;) {
@@ -3900,8 +3906,8 @@ test("speech is paced to real time, never more than 0.5 s ahead", async (t) => {
     worst = Math.max(worst, audioMs - (Date.now() - t0));
     if (audioMs >= 1200) break;
   }
-  assert.ok(worst <= 540, `audio ran ${worst} ms ahead`);
-  assert.ok(Date.now() - t0 >= 600, "1.2 s of audio took at least 0.7 s minus jitter to arrive");
+  assert.ok(worst <= 500, `audio ran ${worst} ms ahead`);
+  assert.ok(Date.now() - t0 >= 700, "1.2 s of audio took at least 0.7 s to arrive");
   await gadget.next("done");
 });
 
@@ -5709,6 +5715,8 @@ Do not push. Report to Omkar:
 
 - the branch `p1-protocol` and its commits, ready for review and publishing;
 - that P2a can branch `p2a-core` from it, and that P3a can vendor `protocol/vectors/` (every `*.json` plus `SHA256SUMS`) with the SDK commit in its `SOURCE` file;
+- for P3a's vendored `frames.json` test: `valid` covers both layers (PROTOCOL.md §4.9), the 2-byte header and, for kind `0x04`, the firmware payload. `fw-no-offset` (`0401aabbcc`) has a valid header, so the header-only `decodeBinary` of contract §3.2 returns a frame for it; the test must also run the kind-4 payload check (a u32 little-endian offset and 1–4096 bytes) before it expects `valid: false`, as `protocol/test/vectors.test.ts` does;
+- for P4b's comparator: `versions.json` now pins numeric identifiers past 2^53 (`big-numeric-prerelease`, `big-numeric-core`), which compare by exact integer value, so compare digit strings (leading zeros dropped, then length, then digits), not JavaScript numbers;
 - that P2d's `THIRD_PARTY.md` must list `@noble/curves` 2.4.0 (MIT, vector generator only) and `ws` 8.22.0 (MIT, fake host only);
 - open questions for P2a and P3a (PROTOCOL.md wording beyond spec §4; confirm or raise before implementing):
   - `voice.drop` ends its turn with `done stopped`;
@@ -5738,6 +5746,16 @@ Review of Tasks 5–8 (commit `fix(P1): address review of tasks 5-8`). Where the
 4. **`RELEASE_VERSION_RE` (Task 5, `version.ts`)** is imported from `types.ts` and re-exported instead of being defined twice.
 5. **Vectors (Task 6).** The verifier pins the case names of `base64.json`, `frames.json` and `versions.json` too. `versions.json` gains four `compare` cases (`leading-zero-core`, `leading-zero-prerelease`, `empty-ident-vs-numeric`, `empty-ident-vs-alpha`) and two `custom` cases (`leading-zero`, `empty-ident`) for inputs the spec's pattern accepts but SemVer 2.0.0 forbids, so the C comparator (P2a) and `protocol/lib` must agree on them. The spec pattern is unchanged; `PROTOCOL.md` §4.1 (where the firmware version encoding lives, and which §4.8 refers to) states the behaviour.
 6. **`decideProve` doc comment (Task 7, `enroll.ts`)** now says that a wrong pairing code uses one of the window's attempts, which the code always did.
+
+Final review (commit `fix(P1): address final review`). Where these differ from the code blocks in Tasks 5, 6, 8, 9, 10 and 12, the repository files are authoritative, except the Task 9 pacing test, whose code block is updated. The fake host gains five tests (one in `cli.test.ts`, two in `handshake.test.ts`, two in `display.test.ts`): Task 13's full run now expects `ℹ pass 33` for the protocol and `ℹ pass 67` for the fake host.
+
+7. **Speech pacing test (Task 9, `voice.test.ts`)** now times from the host's own `tx` event for `speak.begin`, not from the moment the test's `await gadget.next("speak.begin")` resumes, and asserts a lead of at most 500 ms (was 540) and at least 700 ms for 1.2 s of audio (was 600). `tx` is emitted synchronously inside `session.send()`, before `speech.ts` starts its pacing clock, so a stall in the test's event loop can no longer add to the measured lead (an 80 ms stall made the old test fail every time with `audio ran 583 ms ahead`), and the measured lead is an upper bound on the host's real one. Only the test changed; the event table of contract §4.7 is untouched. A mutated `speech.ts` that allows 580 ms of lead fails the new test.
+8. **CLI stdin (Task 12, `main.ts`)** reads the JSON-lines control channel only when fd 0 is a FIFO, a socket or a regular file (`fstatSync(0)`). From a terminal, `/dev/null` or a background job it leaves `process.stdin` alone and serves until SIGINT/SIGTERM. Before, `node tools/fake-host/src/main.ts --port 8810 --code 123456 &` (as P2b and P2d start it) exited 0 at once in a script (a background job's stdin is `/dev/null`) and was stopped by SIGTTIN in an interactive shell. A driver's pipe that closes still means EOF and exit 0 (Review Focus 5). The README says so, and shows `cat | node …` for typing commands by hand. Test: "with no stdin pipe (a background job's /dev/null) the CLI keeps serving until SIGTERM, then exits 0".
+9. **`close` command (Task 8, `server.ts` and `session.ts`)** accepts only 1000 and 3000–4999 (`code must be 1000 or 3000-4999`), and `GadgetSession.close` calls `ws.close()` before it sets `closing`. Before, `{"cmd":"close","code":1006}` (or any code `ws` refuses) set `closing`, then `ws.close()` threw: the socket stayed open while every frame from the gadget was dropped and later commands acked `ok: true` without sending anything. Tests: "close accepts only 1000 and 3000-4999; a refused code leaves the session working" and "GadgetSession.close leaves the session open and sending when the socket refuses the close code".
+10. **Unsent frames (Task 10, `display.ts`)**: `post`, `card`, `card.close`, `act`, `image` and live `settings` ack `ok: false` with `not sent: frame over 16 KiB or gadget closing` when `GadgetSession.send` returns false (an `act` that was not sent also drops its listener and timeout, and a `post` that was not sent plays no speech). `ask` checks its frame against the 16 KiB limit before queueing (`ask exceeds the 16 KiB text frame limit`), so an ask that can never be sent no longer becomes the current ask and blocks every later one. `settings` builds and size-checks its frame before it changes the record (`settings exceed the 16 KiB text frame limit`, record unchanged); a gadget that is live but closing gets `not sent: the gadget is closing`, and a rename in it is kept pending for the next `ready`, as for an offline gadget. Tests: "post, card.close, act and settings that cannot be sent ack an error instead of ok" and "an ask over 16 KiB is refused and does not hold up the asks after it".
+11. **Version comparison (Task 5, `version.ts`; Task 6, vectors)** compares numeric identifiers, in the core and in the pre-release, as digit strings by exact integer value (leading zeros dropped, then length, then digits) instead of as JavaScript numbers, which lost precision past 2^53. `versions.json` gains `big-numeric-prerelease` (`1.0.0-rc.9007199254740993` > `1.0.0-rc.9007199254740992`) and `big-numeric-core` (`9007199254740993.0.0` > `9007199254740992.0.0`), pinned in `vectors.test.ts`; `frames.test.ts` adds values past 2^64 and leading zeros. PROTOCOL.md §4.1 says "numeric identifiers compare by exact integer value, whatever their length".
+12. **`frames.json` meaning of `valid` (Task 2, PROTOCOL.md §4.9)**: the table row now says that `valid` covers both the 2-byte header and, for kind `0x04`, the firmware payload, and that `fw-no-offset` has a valid header and an invalid firmware payload. The vector bytes are unchanged. Task 13's hand-off tells P3a.
+13. **Fake-host README (Task 12)**: a real board is pointed at the computer's LAN address (`host <this computer's LAN address>:8810` with `--bind 0.0.0.0`), not `127.0.0.1`, and the README says the fake host advertises no mDNS, so `host auto` does not find it. The `close` row lists the accepted codes, and the control section says that a command whose frame is over 16 KiB, or whose gadget is closing, gets `ok: false` and sends nothing.
 
 ## Self-review
 

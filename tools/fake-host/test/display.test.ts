@@ -6,7 +6,7 @@ import { startFakeHost, type FakeHost } from "../src/server.ts";
 import type { FakeHostOptions } from "../src/options.ts";
 import type { HostEvent } from "../src/context.ts";
 import { imagePixels } from "../src/display.ts";
-import { CAPS, connectGadget, nextEvent, randomKey, type GadgetOptions, type TestGadget } from "./gadget-client.ts";
+import { CAPS, connectGadget, delay, nextEvent, randomKey, type GadgetOptions, type TestGadget } from "./gadget-client.ts";
 
 async function setup(t: TestContext, o: Partial<FakeHostOptions> = {}, g: Partial<GadgetOptions> = {}): Promise<{ h: FakeHost; gadget: TestGadget; events: HostEvent[]; key: string }> {
   const events: HostEvent[] = [];
@@ -172,6 +172,41 @@ test("settings reach a live gadget; a rename while offline is sent right after t
   const { result: third } = await connectGadget({ port: h.port, key, name: "Desk 2" });
   assert.equal(third.op, "ready");
   assert.equal(h.state.gadgets.get(id)!.name, "Desk 2", "the gadget's own rename wins once nothing is pending");
+});
+
+test("post, card.close, act and settings that cannot be sent ack an error instead of ok", async (t) => {
+  const { h, gadget, events } = await setup(t, { actTimeoutMs: 100 });
+  const big = "x".repeat(20 * 1024);
+  const NOT_SENT = "not sent: frame over 16 KiB or gadget closing";
+  assert.deepEqual(await h.command({ cmd: "post", kind: "message", text: big, speak: true }), { event: "ack", cmd: "post", ok: false, error: NOT_SENT });
+  assert.equal((await h.command({ cmd: "card.close", id: big })).error, NOT_SENT);
+  assert.equal((await h.command({ cmd: "act", id: "x_big", name: "chime", args: { s: big } })).error, NOT_SENT);
+  const record = h.state.gadgets.get(gadget.id)!;
+  assert.equal((await h.command({ cmd: "settings", bot: { id: "b_big", name: big } })).error, "settings exceed the 16 KiB text frame limit");
+  assert.deepEqual(record.bot, { id: "b_fake", name: "Fake Bot" }, "a refused settings command changes nothing");
+  const p = await h.command({ cmd: "post", kind: "message", text: "small", speak: false });
+  assert.equal(p.ok, true);
+  assert.equal((await gadget.next("post")).id, p.id);
+  assert.deepEqual(gadget.ops().slice(2), ["post"], "nothing was sent for the refused commands");
+  await delay(250);
+  assert.ok(!events.some((e) => e.event === "act.result" && e.id === "x_big"), "no act timeout for an act that was never sent");
+  assert.ok(!events.some((e) => e.event === "turn" || (e.event === "tx" && String(e.msg).includes("speak.begin"))), "no speech for a post that was never sent");
+  // A gadget the host is closing is still live but takes nothing more.
+  assert.equal((await h.command({ cmd: "close", code: 4000 })).ok, true);
+  assert.equal((await h.command({ cmd: "post", kind: "message", text: "late" })).error, NOT_SENT);
+  assert.equal((await h.command({ cmd: "card", title: "late" })).error, NOT_SENT);
+  assert.equal((await h.command({ cmd: "settings", speak_pushes: true })).error, "not sent: the gadget is closing");
+  assert.equal((await gadget.closed).code, 4000);
+});
+
+test("an ask over 16 KiB is refused and does not hold up the asks after it", async (t) => {
+  const { h, gadget } = await setup(t);
+  const big = await h.command({ cmd: "ask", kind: "question", title: "Big", body: "x".repeat(20 * 1024) });
+  assert.deepEqual([big.ok, big.error], [false, "ask exceeds the 16 KiB text frame limit"]);
+  const next = await h.command({ cmd: "ask", kind: "permission", title: "Small" });
+  assert.deepEqual([next.ok, next.queued], [true, false]);
+  assert.equal((await gadget.next("ask")).id, next.id);
+  assert.deepEqual(gadget.ops().slice(2), ["ask"]);
 });
 
 test("sense and event frames are reported as rx events and need no answer", async (t) => {

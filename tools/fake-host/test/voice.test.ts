@@ -53,10 +53,16 @@ test("a voice turn: heard, working, three cumulative replies, final, paced speec
 });
 
 test("speech is paced to real time, never more than 0.5 s ahead", async (t) => {
-  const { gadget } = await setup(t, { toneMs: 1200 });
+  const { h, gadget } = await setup(t, { toneMs: 1200 });
+  // Time from the host's own speak.begin send: the tx event is emitted synchronously, before
+  // the host starts its pacing clock, so a stall in this test's event loop cannot skew it.
+  let t0 = 0;
+  h.on((e) => {
+    if (e.event === "tx" && typeof e.msg === "string" && JSON.parse(e.msg).op === "speak.begin") t0 = Date.now();
+  });
   gadget.send({ op: "say", turn: "t00000001-1", text: "hi" });
   await gadget.next("speak.begin", () => true, 5000);
-  const t0 = Date.now();
+  assert.ok(t0 > 0, "the host emitted tx for speak.begin");
   let audioMs = 0;
   let worst = 0;
   for (;;) {
@@ -65,8 +71,8 @@ test("speech is paced to real time, never more than 0.5 s ahead", async (t) => {
     worst = Math.max(worst, audioMs - (Date.now() - t0));
     if (audioMs >= 1200) break;
   }
-  assert.ok(worst <= 540, `audio ran ${worst} ms ahead`);
-  assert.ok(Date.now() - t0 >= 600, "1.2 s of audio took at least 0.7 s minus jitter to arrive");
+  assert.ok(worst <= 500, `audio ran ${worst} ms ahead`);
+  assert.ok(Date.now() - t0 >= 700, "1.2 s of audio took at least 0.7 s to arrive");
   await gadget.next("done");
 });
 

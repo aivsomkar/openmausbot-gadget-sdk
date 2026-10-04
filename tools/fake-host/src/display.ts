@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Approvals (§4.5), push (§4.6), cards, images and actions (§4.7), and settings (§4.3), driven by
 // control commands.
+import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
 import { canonicalJson } from "../../../protocol/lib/encoding.ts";
 import type { AskMsg, AskOption, BotRef, PostKind } from "../../../protocol/lib/types.ts";
-import { ASK_OPTIONS_MAX, BinaryKind, HOST_SENT_ID_RE, IMAGE_FRAME_PAYLOAD_MAX } from "../../../protocol/lib/types.ts";
+import { ASK_OPTIONS_MAX, BinaryKind, HOST_SENT_ID_RE, IMAGE_FRAME_PAYLOAD_MAX, TEXT_FRAME_MAX } from "../../../protocol/lib/types.ts";
 import type { CommandCall, Feature, HostContext } from "./context.ts";
 import { cutChars, foldLatin1 } from "./fold.ts";
 import type { GadgetSession } from "./session.ts";
@@ -17,6 +18,13 @@ export const PERMISSION_OPTIONS: AskOption[] = [
 const CARD_TITLE_MAX = 80;
 const CARD_BODY_MAX = 600;
 const DEFAULT_TTL_S = 30;
+
+const NOT_SENT = "not sent: frame over 16 KiB or gadget closing";
+const frameBytes = (msg: unknown): number => Buffer.byteLength(JSON.stringify(msg), "utf8");
+/** GadgetSession.send, but a frame that was not sent fails the command instead of acking ok. */
+function sendOrThrow(s: GadgetSession, msg: Parameters<GadgetSession["send"]>[0]): void {
+  if (!s.send(msg)) throw new Error(NOT_SENT);
+}
 
 const newId = (prefix: string): string => prefix + randomBytes(6).toString("hex");
 function hostId(call: CommandCall, prefix: string): string {
@@ -103,6 +111,8 @@ function askCommand(call: CommandCall): Record<string, unknown> {
     op: "ask", id: hostId(call, "a_"), kind, title: foldLatin1(text(call, "title")), body: foldLatin1(text(call, "body", false)), options,
   };
   if (expires !== undefined) ask.expires_s = expires;
+  // Checked before queueing: an ask that can never be sent would block every ask after it.
+  if (frameBytes(ask) > TEXT_FRAME_MAX) throw new Error("ask exceeds the 16 KiB text frame limit");
   const q = queueOf(call.host, gadgetId);
   q.pending.push(ask);
   const queued = q.current !== null;
@@ -134,7 +144,7 @@ function postCommand(call: CommandCall): Record<string, unknown> {
   if (typeof speak !== "boolean") throw new Error("speak must be a boolean");
   const id = hostId(call, "p_");
   const bot: BotRef = { id: record.bot.id, name: foldLatin1(record.bot.name) };
-  s.send({ op: "post", id, bot, kind, text: foldLatin1(text(call, "text")), speak });
+  sendOrThrow(s, { op: "post", id, bot, kind, text: foldLatin1(text(call, "text")), speak });
   if (speak) void speechOf(s).play(undefined, call.host.options.toneMs);
   return { id };
 }
@@ -142,7 +152,7 @@ function postCommand(call: CommandCall): Record<string, unknown> {
 function cardCommand(call: CommandCall): Record<string, unknown> {
   const s = call.session();
   const id = hostId(call, "c_");
-  s.send({
+  sendOrThrow(s, {
     op: "card", id, title: cutChars(foldLatin1(text(call, "title")), CARD_TITLE_MAX),
     body: cutChars(foldLatin1(text(call, "body", false)), CARD_BODY_MAX), ttl_s: ttl(call),
   });
@@ -183,13 +193,13 @@ async function imageCommand(call: CommandCall): Promise<Record<string, unknown>>
   const id = hostId(call, "i_");
   const stream = s.allocStream();
   try {
-    s.send({ op: "image.begin", id, stream, w, h, ttl_s: ttl(call) });
+    sendOrThrow(s, { op: "image.begin", id, stream, w, h, ttl_s: ttl(call) });
     for (let at = 0; at < pixels.length; at += IMAGE_FRAME_PAYLOAD_MAX) {
       if (!(await s.sendBinary(BinaryKind.image, stream, pixels.subarray(at, at + IMAGE_FRAME_PAYLOAD_MAX)))) {
         throw new Error("the gadget disconnected");
       }
     }
-    s.send({ op: "image.end", stream });
+    sendOrThrow(s, { op: "image.end", stream });
   } finally {
     s.releaseStream(stream);
   }
@@ -221,7 +231,10 @@ function actCommand(call: CommandCall): Record<string, unknown> {
     offClose();
     clearTimeout(timer);
   }
-  s.send({ op: "act", id, name, args: args as Record<string, unknown> });
+  if (!s.send({ op: "act", id, name, args: args as Record<string, unknown> })) {
+    finish();
+    throw new Error(NOT_SENT);
+  }
   return { id };
 }
 
@@ -230,26 +243,36 @@ function settingsCommand(call: CommandCall): void {
   const record = call.host.state.gadgets.get(id);
   if (!record) throw new Error(`unknown gadget ${id}`);
   const { bot, speak_pushes: speak, name } = call.cmd as { bot?: unknown; speak_pushes?: unknown; name?: unknown };
+  let nextBot = record.bot;
+  let nextSettings = record.settings;
+  let nextName = record.name;
   if (bot !== undefined) {
     const b = bot as Record<string, unknown>;
     if (typeof b !== "object" || b === null || typeof b.id !== "string" || typeof b.name !== "string") throw new Error("bot must be {id, name}");
-    record.bot = { id: b.id, name: b.name };
+    nextBot = { id: b.id, name: b.name };
   }
   if (speak !== undefined) {
     if (typeof speak !== "boolean") throw new Error("speak_pushes must be a boolean");
-    record.settings = { speak_pushes: speak };
+    nextSettings = { speak_pushes: speak };
   }
   if (name !== undefined) {
     if (typeof name !== "string" || name.trim() === "") throw new Error("name must be a non-empty string");
-    record.name = cutChars(name, 32);
+    nextName = cutChars(name, 32);
   }
+  const base = { op: "settings" as const, bot: { id: nextBot.id, name: foldLatin1(nextBot.name) }, settings: { ...nextSettings } };
+  const msg = name === undefined ? base : { ...base, name: foldLatin1(nextName) };
+  // Checked before anything changes: a refused command leaves the record as it was.
+  if (frameBytes(msg) > TEXT_FRAME_MAX) throw new Error("settings exceed the 16 KiB text frame limit");
+  record.bot = nextBot;
+  record.settings = nextSettings;
+  record.name = nextName;
   const s = call.host.live(id);
-  if (!s && name !== undefined) record.namePending = true;
+  const sent = s ? s.send(msg) : false;
+  // Offline, or live but closing: the next `ready` carries bot and settings, and a pending
+  // rename is sent right after it.
+  if (!sent && name !== undefined) record.namePending = true;
   call.host.state.save();
-  if (s) {
-    const msg = { op: "settings" as const, bot: { id: record.bot.id, name: foldLatin1(record.bot.name) }, settings: { ...record.settings } };
-    s.send(name === undefined ? msg : { ...msg, name: foldLatin1(record.name) });
-  }
+  if (s && !sent) throw new Error("not sent: the gadget is closing");
 }
 
 export const displayFeature: Feature = {
@@ -270,7 +293,7 @@ export const displayFeature: Feature = {
     post: postCommand,
     card: cardCommand,
     "card.close": (call) => {
-      call.session().send({ op: "card.close", id: text(call, "id") });
+      sendOrThrow(call.session(), { op: "card.close", id: text(call, "id") });
     },
     image: imageCommand,
     act: actCommand,

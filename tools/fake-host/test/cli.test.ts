@@ -78,3 +78,25 @@ test("the CLI exits 0 when stdin ends and 2 on bad options", async () => {
   assert.equal(await new Promise((r) => bad.on("exit", r)), 2);
   assert.match(stderr, /--code must be six digits/);
 });
+
+test("with no stdin pipe (a background job's /dev/null) the CLI keeps serving until SIGTERM, then exits 0", async () => {
+  const child = spawn(process.execPath, [MAIN, "--port", "0", "--code", "123456", "--quiet"], { stdio: ["ignore", "pipe", "pipe"] });
+  const exit = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
+  const listening = await new Promise<any>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("timed out waiting for listening")), 5000);
+    createInterface({ input: child.stdout }).on("line", (line) => {
+      const e = JSON.parse(line);
+      if (e.event === "listening") {
+        clearTimeout(t);
+        resolve(e);
+      }
+    });
+  });
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(child.exitCode, null, "still running after 500 ms");
+  const { gadget, result } = await connectGadget({ port: listening.port, enroll: "123456" });
+  assert.equal(result.op, "ready");
+  child.kill("SIGTERM");
+  assert.equal(await exit, 0);
+  assert.equal((await gadget.closed).code, 1001);
+});

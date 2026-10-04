@@ -204,9 +204,12 @@ test("versions.json: SemVer precedence and the custom-build rule", () => {
     "numeric-vs-alpha", "equal-release", "equal-rc",
     // Accepted by the pattern although SemVer 2.0.0 forbids them (PROTOCOL.md §4.1): C and TS must agree.
     "leading-zero-core", "leading-zero-prerelease", "empty-ident-vs-numeric", "empty-ident-vs-alpha",
+    // Numeric identifiers past 2^53 compare by exact integer value.
+    "big-numeric-prerelease", "big-numeric-core",
   ]);
   assert.deepEqual(v.compare.slice(10).map((c: Case) => [c.a, c.b, c.cmp]), [
     ["1.01.0", "1.1.0", 0], ["1.1.0-rc.01", "1.1.0-rc.1", 0], ["1.0.0-rc..1", "1.0.0-rc.1", 1], ["1.0.0-.", "1.0.0-a", -1],
+    ["1.0.0-rc.9007199254740993", "1.0.0-rc.9007199254740992", 1], ["9007199254740993.0.0", "9007199254740992.0.0", 1],
   ]);
   assert.deepEqual(v.custom.map((c: Case) => c.name), [
     "dev-zero", "dev-tagged", "release", "prerelease", "leading-v", "two-parts", "empty", "leading-zero", "empty-ident",
