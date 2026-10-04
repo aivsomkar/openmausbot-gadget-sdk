@@ -1,0 +1,103 @@
+{
+  "vectors": "versions",
+  "version": 1,
+  "compare": [
+    {
+      "name": "patch-vs-minor",
+      "a": "1.1.0",
+      "b": "1.0.9",
+      "cmp": 1
+    },
+    {
+      "name": "numeric-minor",
+      "a": "1.10.0",
+      "b": "1.9.9",
+      "cmp": 1
+    },
+    {
+      "name": "release-vs-rc",
+      "a": "1.1.0",
+      "b": "1.1.0-rc.1",
+      "cmp": 1
+    },
+    {
+      "name": "rc2-vs-rc1",
+      "a": "1.1.0-rc.2",
+      "b": "1.1.0-rc.1",
+      "cmp": 1
+    },
+    {
+      "name": "rc10-vs-rc9",
+      "a": "1.1.0-rc.10",
+      "b": "1.1.0-rc.9",
+      "cmp": 1
+    },
+    {
+      "name": "beta-vs-rc",
+      "a": "1.1.0-beta",
+      "b": "1.1.0-rc",
+      "cmp": -1
+    },
+    {
+      "name": "shorter-prerelease",
+      "a": "1.1.0-rc",
+      "b": "1.1.0-rc.1",
+      "cmp": -1
+    },
+    {
+      "name": "numeric-vs-alpha",
+      "a": "1.1.0-1",
+      "b": "1.1.0-a",
+      "cmp": -1
+    },
+    {
+      "name": "equal-release",
+      "a": "1.1.0",
+      "b": "1.1.0",
+      "cmp": 0
+    },
+    {
+      "name": "equal-rc",
+      "a": "1.1.0-rc.1",
+      "b": "1.1.0-rc.1",
+      "cmp": 0
+    }
+  ],
+  "custom": [
+    {
+      "name": "dev-zero",
+      "fw": "0.0.0-dev",
+      "custom": true
+    },
+    {
+      "name": "dev-tagged",
+      "fw": "1.2.0-dev",
+      "custom": true
+    },
+    {
+      "name": "release",
+      "fw": "1.2.0",
+      "custom": false
+    },
+    {
+      "name": "prerelease",
+      "fw": "1.2.0-rc.1",
+      "custom": false
+    },
+    {
+      "name": "leading-v",
+      "fw": "v1.2.0",
+      "custom": true
+    },
+    {
+      "name": "two-parts",
+      "fw": "1.2",
+      "custom": true
+    },
+    {
+      "name": "empty",
+      "fw": "",
+      "custom": true
+    }
+  ]
+}

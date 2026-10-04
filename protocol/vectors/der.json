@@ -1,0 +1,61 @@
+{
+  "vectors": "der",
+  "version": 1,
+  "cases": [
+    {
+      "name": "rfc-sample",
+      "valid": true,
+      "der_hex": "3046022100efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716022100f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8",
+      "raw_hex": "efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8",
+      "der_len": 72,
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "message_utf8": "sample"
+    },
+    {
+      "name": "short-der-69",
+      "valid": true,
+      "der_hex": "3043022052c1af44f658bb58a5b434a96d609052855835feca85b011cdfcb4159f52c37e021f2d466a13caea297fa0c97498ce12ed77ea25e9895415c4bb6ebe64b2a049cb",
+      "raw_hex": "52c1af44f658bb58a5b434a96d609052855835feca85b011cdfcb4159f52c37e002d466a13caea297fa0c97498ce12ed77ea25e9895415c4bb6ebe64b2a049cb",
+      "der_len": 69,
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "message_utf8": "openmausbot-gadget/1 der-short 13"
+    },
+    {
+      "name": "prove-pinned",
+      "valid": true,
+      "der_hex": "3046022100f0c4fbe24029d797b16b36dcc0d05fb7a8b9df8c5ca4b27ad99d820d4d8a664202210087d087e1c83ab59e8feebee63a40b423c5af81956ceca8033264098abf44e35a",
+      "raw_hex": "f0c4fbe24029d797b16b36dcc0d05fb7a8b9df8c5ca4b27ad99d820d4d8a664287d087e1c83ab59e8feebee63a40b423c5af81956ceca8033264098abf44e35a",
+      "der_len": 72,
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "message_utf8": "openmausbot-gadget/1\nprove\ngad_b18b86ce1389e46d\nAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=\n000102030405060708090a0b0c0d0e0f"
+    },
+    {
+      "name": "non-minimal-int",
+      "valid": false,
+      "der_hex": "3044022052c1af44f658bb58a5b434a96d609052855835feca85b011cdfcb4159f52c37e0220002d466a13caea297fa0c97498ce12ed77ea25e9895415c4bb6ebe64b2a049cb",
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "message_utf8": "openmausbot-gadget/1 der-short 13"
+    },
+    {
+      "name": "negative-int",
+      "valid": false,
+      "der_hex": "30450220efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716022100f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8",
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "message_utf8": "sample"
+    },
+    {
+      "name": "trailing-bytes",
+      "valid": false,
+      "der_hex": "3043022052c1af44f658bb58a5b434a96d609052855835feca85b011cdfcb4159f52c37e021f2d466a13caea297fa0c97498ce12ed77ea25e9895415c4bb6ebe64b2a049cb00",
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "message_utf8": "openmausbot-gadget/1 der-short 13"
+    },
+    {
+      "name": "wrong-tag",
+      "valid": false,
+      "der_hex": "3146022100efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716022100f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8",
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "message_utf8": "sample"
+    }
+  ]
+}

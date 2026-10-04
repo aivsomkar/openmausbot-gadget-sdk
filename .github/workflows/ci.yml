@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# One workflow; each plan appends its own job and never edits another plan's job
+# (docs/plans/00-interfaces.md §1.6). P1 owns the `protocol` and `fake-host` jobs.
+name: ci
+on: [push, pull_request]
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run vectors:check
+      - run: npm run test:protocol

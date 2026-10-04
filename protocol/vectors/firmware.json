@@ -1,0 +1,70 @@
+{
+  "vectors": "firmware",
+  "version": 1,
+  "cases": [
+    {
+      "name": "t1-amoled",
+      "expect": "accept",
+      "key_id": "t1",
+      "private_key_hex": "274b871e29523ce21208177b90a0a3bd6a169cb84cf867236adc68f3d90fc0c8",
+      "pubkey_b64": "BIUTH1UeVJw2VXn0Ehdhd8apNOHmB6VvjV512SxIbCCXfUhvlLRTuOTLHtrsVAbIx06JhMoOMbC3ic73hZpxMwg=",
+      "board": "amoled-175c",
+      "gadget_board": "amoled-175c",
+      "version": "1.1.0",
+      "size": 1234567,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": "openmausbot-gadget/1\nfirmware\namoled-175c\n1.1.0\n1234567\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sig_der_hex": "3046022100de2dfa125231a739f0b1b27e2ec085e4027b59e4486978457ffccb95b3895f2d022100ef00bd5c4177cb97ba4a4f4036046f6a20b3c896c5ab1124720b54afe6179744",
+      "sig_b64": "MEYCIQDeLfoSUjGnOfCxsn4uwIXkAntZ5EhpeEV//MuVs4lfLQIhAO8AvVxBd8uXukpPQDYEb2ogs8iWxasRJHILVK/mF5dE",
+      "deterministic": true
+    },
+    {
+      "name": "other-board",
+      "expect": "bad_sig",
+      "key_id": "t1",
+      "private_key_hex": "274b871e29523ce21208177b90a0a3bd6a169cb84cf867236adc68f3d90fc0c8",
+      "pubkey_b64": "BIUTH1UeVJw2VXn0Ehdhd8apNOHmB6VvjV512SxIbCCXfUhvlLRTuOTLHtrsVAbIx06JhMoOMbC3ic73hZpxMwg=",
+      "board": "amoled-175c",
+      "gadget_board": "lcd-154",
+      "version": "1.1.0",
+      "size": 1234567,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": "openmausbot-gadget/1\nfirmware\nlcd-154\n1.1.0\n1234567\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sig_der_hex": "3046022100de2dfa125231a739f0b1b27e2ec085e4027b59e4486978457ffccb95b3895f2d022100ef00bd5c4177cb97ba4a4f4036046f6a20b3c896c5ab1124720b54afe6179744",
+      "sig_b64": "MEYCIQDeLfoSUjGnOfCxsn4uwIXkAntZ5EhpeEV//MuVs4lfLQIhAO8AvVxBd8uXukpPQDYEb2ogs8iWxasRJHILVK/mF5dE",
+      "deterministic": false
+    },
+    {
+      "name": "size-changed",
+      "expect": "bad_sig",
+      "key_id": "t1",
+      "private_key_hex": "274b871e29523ce21208177b90a0a3bd6a169cb84cf867236adc68f3d90fc0c8",
+      "pubkey_b64": "BIUTH1UeVJw2VXn0Ehdhd8apNOHmB6VvjV512SxIbCCXfUhvlLRTuOTLHtrsVAbIx06JhMoOMbC3ic73hZpxMwg=",
+      "board": "amoled-175c",
+      "gadget_board": "amoled-175c",
+      "version": "1.1.0",
+      "size": 1234568,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": "openmausbot-gadget/1\nfirmware\namoled-175c\n1.1.0\n1234568\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sig_der_hex": "3046022100de2dfa125231a739f0b1b27e2ec085e4027b59e4486978457ffccb95b3895f2d022100ef00bd5c4177cb97ba4a4f4036046f6a20b3c896c5ab1124720b54afe6179744",
+      "sig_b64": "MEYCIQDeLfoSUjGnOfCxsn4uwIXkAntZ5EhpeEV//MuVs4lfLQIhAO8AvVxBd8uXukpPQDYEb2ogs8iWxasRJHILVK/mF5dE",
+      "deterministic": false
+    },
+    {
+      "name": "sha-uppercase",
+      "expect": "bad_sig",
+      "key_id": "t1",
+      "private_key_hex": "274b871e29523ce21208177b90a0a3bd6a169cb84cf867236adc68f3d90fc0c8",
+      "pubkey_b64": "BIUTH1UeVJw2VXn0Ehdhd8apNOHmB6VvjV512SxIbCCXfUhvlLRTuOTLHtrsVAbIx06JhMoOMbC3ic73hZpxMwg=",
+      "board": "amoled-175c",
+      "gadget_board": "amoled-175c",
+      "version": "1.1.0",
+      "size": 1234567,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": "openmausbot-gadget/1\nfirmware\namoled-175c\n1.1.0\n1234567\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sig_der_hex": "3046022100aaeada0be5e43534537c417ddfffd5a3e059a056bff21b2d0c4809b5d06d2d91022100864b3b41b4df2ea010787a71871926125a117f55d154f4e4c029e2553378c557",
+      "sig_b64": "MEYCIQCq6toL5eQ1NFN8QX3f/9Wj4FmgVr/yGy0MSAm10G0tkQIhAIZLO0G03y6gEHh6cYcZJhJaEX9V0VT05MAp4lUzeMVX",
+      "deterministic": false
+    }
+  ]
+}

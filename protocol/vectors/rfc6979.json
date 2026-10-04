@@ -1,0 +1,30 @@
+{
+  "vectors": "rfc6979",
+  "version": 1,
+  "cases": [
+    {
+      "name": "sample",
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "message_utf8": "sample",
+      "message_sha256_hex": "af2bdbe1aa9b6ec1e2ade1d694f41fc71a831d0268e9891562113d8a62add1bf",
+      "k_hex": "a6e3c57dd01abe90086538398355dd4c3b17aa873382b0f24d6129493d8aad60",
+      "r_hex": "efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716",
+      "s_hex": "f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8",
+      "raw_hex": "efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8",
+      "der_hex": "3046022100efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716022100f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8",
+      "high_s": true
+    },
+    {
+      "name": "test",
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "message_utf8": "test",
+      "message_sha256_hex": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "k_hex": "d16b6ae827f17175e040871a1c7ec3500192c4c92677336ec2537acaee0008e0",
+      "r_hex": "f1abb023518351cd71d881567b1ea663ed3efcf6c5132b354f28d3b0b7d38367",
+      "s_hex": "019f4113742a2b14bd25926b49c649155f267e60d3814b4c0cc84250e46f0083",
+      "raw_hex": "f1abb023518351cd71d881567b1ea663ed3efcf6c5132b354f28d3b0b7d38367019f4113742a2b14bd25926b49c649155f267e60d3814b4c0cc84250e46f0083",
+      "der_hex": "3045022100f1abb023518351cd71d881567b1ea663ed3efcf6c5132b354f28d3b0b7d383670220019f4113742a2b14bd25926b49c649155f267e60d3814b4c0cc84250e46f0083",
+      "high_s": false
+    }
+  ]
+}

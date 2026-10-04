@@ -1,0 +1,22 @@
+{
+  "vectors": "identity",
+  "version": 1,
+  "cases": [
+    {
+      "name": "rfc6979-a25",
+      "private_key_hex": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "pubkey_hex": "0460fed4ba255a9d31c961eb74c6356d68c049b8923b61fa6ce669622e60f29fb67903fe1008b8bc99a41ae9e95628bc64f2f1b20c2d7e9f5177a3c294d4462299",
+      "pubkey_b64": "BGD+1LolWp0xyWHrdMY1bWjASbiSO2H6bOZpYi5g8p+2eQP+EAi4vJmkGunpVii8ZPLxsgwtfp9Rd6PClNRGIpk=",
+      "pubkey_sha256_hex": "b18b86ce1389e46de87aa4a5131ce83c1160fa33c087ab15b863574d31d8ff3c",
+      "id": "gad_b18b86ce1389e46d"
+    },
+    {
+      "name": "test-t1",
+      "private_key_hex": "274b871e29523ce21208177b90a0a3bd6a169cb84cf867236adc68f3d90fc0c8",
+      "pubkey_hex": "0485131f551e549c365579f412176177c6a934e1e607a56f8d5e75d92c486c20977d486f94b453b8e4cb1edaec5406c8c74e8984ca0e31b0b789cef7859a713308",
+      "pubkey_b64": "BIUTH1UeVJw2VXn0Ehdhd8apNOHmB6VvjV512SxIbCCXfUhvlLRTuOTLHtrsVAbIx06JhMoOMbC3ic73hZpxMwg=",
+      "pubkey_sha256_hex": "3b0f5e1600a95d87fa86265f284085a9df80f2d9787d8818316e98a3f8c17dc5",
+      "id": "gad_3b0f5e1600a95d87"
+    }
+  ]
+}

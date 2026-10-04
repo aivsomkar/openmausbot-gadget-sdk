@@ -1,0 +1,82 @@
+{
+  "vectors": "base64",
+  "version": 1,
+  "cases": [
+    {
+      "name": "empty",
+      "input": "",
+      "canonical": true,
+      "bytes_hex": ""
+    },
+    {
+      "name": "one-byte",
+      "input": "AA==",
+      "canonical": true,
+      "bytes_hex": "00"
+    },
+    {
+      "name": "two-bytes",
+      "input": "AAE=",
+      "canonical": true,
+      "bytes_hex": "0001"
+    },
+    {
+      "name": "three-bytes",
+      "input": "AAEC",
+      "canonical": true,
+      "bytes_hex": "000102"
+    },
+    {
+      "name": "pinned-nonce",
+      "input": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+      "canonical": true,
+      "bytes_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    },
+    {
+      "name": "rfc-pubkey",
+      "input": "BGD+1LolWp0xyWHrdMY1bWjASbiSO2H6bOZpYi5g8p+2eQP+EAi4vJmkGunpVii8ZPLxsgwtfp9Rd6PClNRGIpk=",
+      "canonical": true,
+      "bytes_hex": "0460fed4ba255a9d31c961eb74c6356d68c049b8923b61fa6ce669622e60f29fb67903fe1008b8bc99a41ae9e95628bc64f2f1b20c2d7e9f5177a3c294d4462299"
+    },
+    {
+      "name": "no-padding",
+      "input": "AA",
+      "canonical": false
+    },
+    {
+      "name": "short-padding",
+      "input": "AA=",
+      "canonical": false
+    },
+    {
+      "name": "pad-bits",
+      "input": "AB==",
+      "canonical": false
+    },
+    {
+      "name": "missing-padding-3",
+      "input": "AAE",
+      "canonical": false
+    },
+    {
+      "name": "trailing-newline",
+      "input": "AA==\n",
+      "canonical": false
+    },
+    {
+      "name": "leading-space",
+      "input": " AA==",
+      "canonical": false
+    },
+    {
+      "name": "url-alphabet",
+      "input": "-_8=",
+      "canonical": false
+    },
+    {
+      "name": "concatenated",
+      "input": "AA==AA==",
+      "canonical": false
+    }
+  ]
+}
