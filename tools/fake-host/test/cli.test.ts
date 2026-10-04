@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseCommandLine, formatEvent } from "../src/control.ts";
@@ -9,9 +9,20 @@ import { connectGadget } from "./gadget-client.ts";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 
+/**
+ * Kills the child when the test ends if it is still running. A failed assertion must fail the test,
+ * not leave a fake host serving: a live child keeps this file's process, and so `node --test`, open.
+ */
+function reap(t: TestContext, child: ChildProcess): void {
+  t.after(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  });
+}
+
 /** Spawns the CLI and collects its stdout events; `next` waits for the first unread match. */
-function spawnHost(args: string[]): { child: ChildProcessWithoutNullStreams; next: (m: (e: any) => boolean) => Promise<any>; send: (line: string) => void; exit: Promise<number | null> } {
+function spawnHost(t: TestContext, args: string[]): { child: ChildProcessWithoutNullStreams; next: (m: (e: any) => boolean) => Promise<any>; send: (line: string) => void; exit: Promise<number | null> } {
   const child = spawn(process.execPath, [MAIN, ...args], { stdio: ["pipe", "pipe", "pipe"] });
+  reap(t, child);
   const seen: any[] = [];
   const waiting: Array<{ m: (e: any) => boolean; resolve: (e: any) => void }> = [];
   createInterface({ input: child.stdout }).on("line", (line) => {
@@ -47,8 +58,8 @@ test("parseCommandLine accepts command objects only", () => {
   assert.equal(formatEvent({ event: "ack", cmd: "x", ok: true }), '{"event":"ack","cmd":"x","ok":true}\n');
 });
 
-test("the CLI prints listening and code, enrolls a gadget, runs stdin commands and quits with 0", async () => {
-  const h = spawnHost(["--port", "0", "--code", "123456", "--quiet"]);
+test("the CLI prints listening and code, enrolls a gadget, runs stdin commands and quits with 0", async (t) => {
+  const h = spawnHost(t, ["--port", "0", "--code", "123456", "--quiet"]);
   const listening = await h.next((e) => e.event === "listening");
   assert.match(listening.host_id, /^[0-9a-f]{32}$/);
   assert.equal((await h.next((e) => e.event === "code")).code, "123456");
@@ -67,20 +78,22 @@ test("the CLI prints listening and code, enrolls a gadget, runs stdin commands a
   assert.equal(await h.exit, 0);
 });
 
-test("the CLI exits 0 when stdin ends and 2 on bad options", async () => {
-  const h = spawnHost(["--port", "0", "--quiet"]);
+test("the CLI exits 0 when stdin ends and 2 on bad options", async (t) => {
+  const h = spawnHost(t, ["--port", "0", "--quiet"]);
   assert.match(String((await h.next((e) => e.event === "code")).code), /^\d{6}$/);
   h.child.stdin.end();
   assert.equal(await h.exit, 0);
   const bad = spawn(process.execPath, [MAIN, "--code", "12"], { stdio: ["pipe", "pipe", "pipe"] });
+  reap(t, bad);
   let stderr = "";
   bad.stderr.on("data", (d) => (stderr += d));
   assert.equal(await new Promise((r) => bad.on("exit", r)), 2);
   assert.match(stderr, /--code must be six digits/);
 });
 
-test("with no stdin pipe (a background job's /dev/null) the CLI keeps serving until SIGTERM, then exits 0", async () => {
+test("with no stdin pipe (a background job's /dev/null) the CLI keeps serving until SIGTERM, then exits 0", async (t) => {
   const child = spawn(process.execPath, [MAIN, "--port", "0", "--code", "123456", "--quiet"], { stdio: ["ignore", "pipe", "pipe"] });
+  reap(t, child);
   const exit = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
   const listening = await new Promise<any>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error("timed out waiting for listening")), 5000);
