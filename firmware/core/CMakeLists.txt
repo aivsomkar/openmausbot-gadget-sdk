@@ -8,6 +8,7 @@ set(GADGET_CORE_SRCS
   src/crypto_psa.c
   src/boards.c
   src/ui_layout.c
+  src/console.c
 )
 
 if(ESP_PLATFORM)
