@@ -42,7 +42,7 @@ This repository is an **open-source SDK** for people who build their own: firmwa
 | Text-to-speech | MausBot's existing providers, returned as 16 or 24 kHz PCM. |
 | Routing | Each gadget talks to one bot (chosen in Devices) in that bot's main thread. |
 | v1 features | Talk and listen, approvals on the gadget, push, bot tools, battery level, over-the-air updates of official releases. |
-| License | Apache-2.0, matching OpenMausBot. The MausBot name and the Maus mascot are trademarks of Supamaus. |
+| License | Apache-2.0, matching OpenMausBot. The OpenMausBot name, the MausBot name and the Maus mascot are trademarks of Supamaus Software Private Limited. |
 
 ## 3. Architecture
 
