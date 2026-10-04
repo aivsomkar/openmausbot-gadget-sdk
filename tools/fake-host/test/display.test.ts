@@ -95,9 +95,12 @@ test("post: routine and message kinds, bot from the record, speech only when ask
 
 test("post speech starts only after the reply's speech has played out", async (t) => {
   const { h, gadget } = await setup(t, { toneMs: 300, replyIntervalMs: 10 });
-  const begins: number[] = [];   // arrival times of speak.begin frames
-  gadget.ws.on("message", (data: Buffer, isBinary: boolean) => {
-    if (!isBinary && JSON.parse(data.toString("utf8")).op === "speak.begin") begins.push(Date.now());
+  // Send times of the host's speak.begin frames, from its own tx events: tx is emitted synchronously
+  // inside session.send(), before speech.ts starts its playout clock, so a stall in this process
+  // (host and gadget share it) cannot shorten the measured gap the way arrival times could.
+  const begins: number[] = [];
+  h.on((e) => {
+    if (e.event === "tx" && typeof e.msg === "string" && JSON.parse(e.msg).op === "speak.begin") begins.push(Date.now());
   });
   gadget.send({ op: "say", turn: "t00000001-1", text: "x" });
   const replyBegin = await gadget.next("speak.begin", () => true, 5000);
