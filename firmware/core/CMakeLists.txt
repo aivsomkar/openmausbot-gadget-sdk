@@ -5,6 +5,7 @@
 set(GADGET_CORE_SRCS
   src/util.c
   src/proto.c
+  src/crypto_psa.c
 )
 
 if(ESP_PLATFORM)
@@ -16,5 +17,5 @@ endif()
 
 add_library(gadget_core STATIC ${GADGET_CORE_SRCS})
 target_include_directories(gadget_core PUBLIC include)
-target_link_libraries(gadget_core PUBLIC cjson)
+target_link_libraries(gadget_core PUBLIC cjson gadget_mbedcrypto)
 gadget_warnings(gadget_core)

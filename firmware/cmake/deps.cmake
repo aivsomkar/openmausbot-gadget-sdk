@@ -18,7 +18,34 @@ FetchContent_Declare(unity
   URL_HASH SHA256=e84eb301ca7967831e68b1728f911e87fa2d345d8ddb64f897bc2f2ee24a321c
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 
-FetchContent_MakeAvailable(cjson unity)
+# mbedTLS (Apache-2.0), PSA Crypto only. 3.6.7 matches ESP-IDF 5.5's 3.6.x;
+# the 4.2.0 CI leg matches ESP-IDF 6.0's 4.x. Target mbedcrypto (3.6) or
+# tfpsacrypto (4.x), wrapped as gadget_mbedcrypto.
+if(GADGET_MBEDTLS_VERSION STREQUAL "3.6.7")
+  set(_gadget_mbedtls_sha a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6)
+elseif(GADGET_MBEDTLS_VERSION STREQUAL "4.2.0")
+  set(_gadget_mbedtls_sha 2bed9d713b4668f76553b097e72b8aa30bc8f112a940d7ae228d524bbde6ffea)
+else()
+  message(FATAL_ERROR "GADGET_MBEDTLS_VERSION must be 3.6.7 or 4.2.0, not ${GADGET_MBEDTLS_VERSION}")
+endif()
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(GEN_FILES OFF CACHE BOOL "" FORCE)
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(TF_PSA_CRYPTO_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(mbedtls
+  URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-${GADGET_MBEDTLS_VERSION}/mbedtls-${GADGET_MBEDTLS_VERSION}.tar.bz2
+  URL_HASH SHA256=${_gadget_mbedtls_sha}
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+
+FetchContent_MakeAvailable(cjson unity mbedtls)
+
+add_library(gadget_mbedcrypto INTERFACE)
+if(TARGET tfpsacrypto)
+  target_link_libraries(gadget_mbedcrypto INTERFACE tfpsacrypto)
+else()
+  target_link_libraries(gadget_mbedcrypto INTERFACE mbedcrypto)
+endif()
 
 add_library(cjson STATIC ${cjson_SOURCE_DIR}/cJSON.c)
 target_include_directories(cjson PUBLIC ${cjson_SOURCE_DIR})

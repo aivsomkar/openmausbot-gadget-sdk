@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Pure helpers (gadget_util.h): base64, hex, DER, validators, UTF-8, PRNG. */
 #include <string.h>
+#include "gadget_hal.h"
 #include "gadget_util.h"
 
 /* ---- base64 (RFC 4648 §4, standard alphabet, padded) ------------------- */
@@ -160,6 +161,18 @@ gadget_status_t gadget_der_to_raw(const uint8_t *der, size_t der_len, uint8_t ra
   if (st != GADGET_OK) return st;
   off += used;
   return off == der_len ? GADGET_OK : GADGET_ERR_PARSE;
+}
+
+/* ---- identity ----------------------------------------------------------- */
+
+gadget_status_t gadget_id_from_pubkey(const uint8_t pub[GADGET_PUBKEY_LEN], char out[GADGET_ID_LEN + 1]) {
+  if (pub == NULL || out == NULL) return GADGET_ERR_ARG;
+  uint8_t hash[GADGET_SHA256_LEN];
+  gadget_status_t st = hal_crypto_sha256(pub, GADGET_PUBKEY_LEN, hash);
+  if (st != GADGET_OK) return st;
+  memcpy(out, "gad_", 4);
+  gadget_hex_encode(out + 4, hash, 8); /* 16 hex characters */
+  return GADGET_OK;
 }
 
 /* ---- validators --------------------------------------------------------- */

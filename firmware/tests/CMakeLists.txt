@@ -13,3 +13,4 @@ endfunction()
 
 gadget_pure_test(util)
 gadget_pure_test(proto)
+gadget_pure_test(crypto)
