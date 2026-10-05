@@ -18,10 +18,12 @@ set(port_srcs
   main.c
   port_events.c
   hal_system.c
-  console_usj.c)
+  console_usj.c
+  hal_storage.c)
 
 set(logic_srcs
-  logic/pl_event.c)
+  logic/pl_event.c
+  logic/pl_util.c)
 
 set(port_include_dirs "." "logic" "${board_dir}")
 

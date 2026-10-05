@@ -22,6 +22,7 @@ set(CORE_DIR ${ESP_DIR}/../../core)
 set(PORT_LOGIC_SRCS
   ${CORE_DIR}/src/boards.c
   ${ESP_DIR}/main/logic/pl_event.c
+  ${ESP_DIR}/main/logic/pl_util.c
 )
 
 add_library(port_logic STATIC ${PORT_LOGIC_SRCS})
@@ -40,3 +41,4 @@ endfunction()
 port_test(test_partitions ${ESP_DIR}/partitions/16mb.csv)
 port_test(test_board_defaults ${ESP_DIR})
 port_test(test_pl_event)
+port_test(test_pl_util)
