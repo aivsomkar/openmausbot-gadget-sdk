@@ -15,11 +15,15 @@ endif()
 list(TRANSFORM BOARD_DRIVER_SRCS PREPEND "drivers/")
 
 set(port_srcs
-  main.c)
+  main.c
+  port_events.c
+  hal_system.c
+  console_usj.c)
 
-set(logic_srcs)
+set(logic_srcs
+  logic/pl_event.c)
 
-set(port_include_dirs "." "${board_dir}")
+set(port_include_dirs "." "logic" "${board_dir}")
 
 idf_component_register(
   SRCS ${port_srcs} ${logic_srcs} ${BOARD_DRIVER_SRCS}
