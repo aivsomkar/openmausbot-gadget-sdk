@@ -1,3 +1,5 @@
 protocol/vectors/** -text
 keys/** -text
 *.png binary
+firmware/ui/art/** text eol=lf
+firmware/ui/fonts/** text eol=lf
