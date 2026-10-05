@@ -172,3 +172,34 @@ if(GADGET_WITH_LVGL AND GADGET_BUILD_SIM) # gadget_sim_lvgl lives in ports/sim
     set_tests_properties(ui.snap.fixtures.${board} PROPERTIES LABELS snapshot TIMEOUT 120)
   endforeach()
 endif()
+
+# ---- P2b: snapshots through the whole simulator, host scripted -----------
+# ui.snap.<board> runs scripts/snap_screens.txt, ui.snap.<board>.update runs
+# scripts/snap_update_<board>.txt. Each starts from a state folder that holds
+# only the RFC key of contract 1.7 as dev_key, so every run shows the same
+# device id (gad_b18b86ce1389e46d); --seed seeds only the UI's PRNG.
+# Gated on the options, not on `TARGET gadget-sim` (see the sim tests above).
+if(GADGET_WITH_LVGL AND GADGET_BUILD_SIM)
+  set(_rfc_dev_key c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721)
+  foreach(board amoled-175c lcd-154 devkit)
+    foreach(run screens update)
+      if(run STREQUAL "screens")
+        set(_name ui.snap.${board})
+        set(_script firmware/tests/scripts/snap_screens.txt)
+      else()
+        set(_name ui.snap.${board}.update)
+        set(_script firmware/tests/scripts/snap_update_${board}.txt)
+      endif()
+      set(_state ${CMAKE_BINARY_DIR}/snap-state/${board}-${run})
+      add_test(NAME ${_name}.fresh
+               COMMAND ${CMAKE_COMMAND} -DDIR=${_state} -DDEV_KEY=${_rfc_dev_key}
+                       -P ${CMAKE_CURRENT_SOURCE_DIR}/fresh_dir.cmake)
+      set_tests_properties(${_name}.fresh PROPERTIES FIXTURES_SETUP ${_name}.state LABELS snapshot)
+      add_test(NAME ${_name}
+               COMMAND $<TARGET_FILE:gadget-sim> --board ${board} --headless --host script --seed 1 --battery 82
+                       --state-dir ${_state} --snapshot-dir firmware/tests/snapshots/${board} --script ${_script}
+               WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+      set_tests_properties(${_name} PROPERTIES FIXTURES_REQUIRED ${_name}.state LABELS snapshot TIMEOUT 300)
+    endforeach()
+  endforeach()
+endif()

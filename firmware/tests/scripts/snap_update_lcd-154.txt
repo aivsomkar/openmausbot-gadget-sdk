@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+# The Update screen on lcd-154 (CTest ui.snap.lcd-154.update, fresh --state-dir
+# holding only the RFC key).
+# The offer is a real one for this board: a 100-byte image (bytes 0x00..0x63,
+# SHA-256 below) signed with the test key t1 (keys/test-t1.key.hex, compiled
+# into GADGET_TEST_KEYS builds) over
+#   openmausbot-gadget/1\nfirmware\nlcd-154\n1.1.0\n100\n<sha256>
+# The script then sends the first 50 bytes, so the screen shows 50 %.
+console wifi "Home" "password123"
+console pair 123456
+wait 300
+net_open
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Omkar's computer"}
+expect prove
+net_text {"op":"ready","session":"s_0123456789ab","bot":{"id":"b_jev","name":"Jev"},"settings":{"speak_pushes":false}}
+model screen idle
+net_text {"op":"fw.offer","stream":7,"board":"lcd-154","version":"1.1.0","size":100,"sha256":"bce0aff19cf5aa6a7469a30d61d04e4376e4bbf6381052ee9e7f33925c954d52","sig":"MEUCIQCim4bgWq9EuOsKklOr9fP8IAjs1rO8aOvElRgfR3nCQwIgWDYXtzYo4Th1X5f4APSrU9G4RRQ23+4MjTSxbIJBJXs=","key_id":"t1"}
+expect fw.ready
+net_binary 040700000000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031
+model screen update
+model update.pct 50
+wait 500
+snapshot update_receiving

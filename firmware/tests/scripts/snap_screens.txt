@@ -1,0 +1,140 @@
+# SPDX-License-Identifier: Apache-2.0
+# Screens reached through the whole simulator (core + firmware/ui + the
+# headless LVGL display) with the host side scripted (--host script).
+# CTest ui.snap.<board> runs it for amoled-175c, lcd-154 and devkit from a
+# fresh --state-dir holding only the RFC key (device id gad_b18b86ce1389e46d);
+# goldens live in firmware/tests/snapshots/<board>/.
+# Turn screens (thinking, speaking, reply) need the gadget's random turn id,
+# and Setup "need Wi-Fi" never shows (the simulator always has Wi-Fi), so
+# test_ui_snapshots draws those (fx_*.png) instead.
+# After an `error` frame the gadget closes the connection itself, so the
+# script sends no net_close there.
+# The script sends an unknown op ("x-keepalive") before long waits: any
+# inbound frame resets the gadget's 45 s liveness timer, and receivers
+# ignore unknown ops (PROTOCOL.md 4.1).
+
+# ---- Setup: nothing stored but the device key -----------------------------
+model screen setup
+console wifi "Home" "password123"
+model setup.step need_code
+wait 2000
+snapshot setup_need_code
+
+# ---- Setup: a wrong code ----------------------------------------------------
+console pair 123456
+model setup.step pairing
+wait 300
+snapshot setup_pairing
+net_open
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Omkar's computer"}
+expect prove
+model host_name ~Omkar
+wait 300
+snapshot setup_pairing_host
+net_text {"op":"error","code":"bad_code","message":"That code is not valid."}
+model setup.step bad_code
+wait 1500
+snapshot setup_bad_code
+
+# ---- Setup: too many devices, then the 10 s retry pairs -------------------
+console pair 654321
+wait 300
+net_open
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Omkar's computer"}
+expect prove
+net_text {"op":"error","code":"device_limit","message":"MausBot has too many devices."}
+model setup.step device_limit
+wait 1000
+snapshot setup_device_limit
+wait 10000
+net_open
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Omkar's computer"}
+expect prove
+net_text {"op":"ready","session":"s_0123456789ab","bot":{"id":"b_jev","name":"Jev"},"settings":{"speak_pushes":false}}
+model screen idle
+model bot_name Jev
+wait 2000
+snapshot idle
+
+# ---- Listening, the countdown, CANCEL drops the recording -----------------
+talk_down
+wait 600
+model screen listening
+snapshot listening
+wait 20000
+net_text {"op":"x-keepalive"}
+wait 20000
+net_text {"op":"x-keepalive"}
+wait 15400
+snapshot listening_countdown
+cancel
+expect voice.drop
+model screen idle
+net_text {"op":"x-keepalive"}
+
+# ---- Asks: permission, a question, one only a computer or phone can answer -
+net_text {"op":"ask","id":"a_0000000000000001","kind":"permission","title":"Run shell command?","body":"ls -la ~/Documents","options":[{"id":"allow","label":"Allow","style":"allow"},{"id":"deny","label":"Deny","style":"deny"}]}
+model screen ask
+wait 1000
+snapshot ask_permission
+net_text {"op":"ask.close","id":"a_0000000000000001","reason":"answered"}
+model screen idle
+net_text {"op":"ask","id":"a_0000000000000002","kind":"question","title":"Which room?","body":"For tomorrow's design review.","options":[{"id":"atlas","label":"Atlas"},{"id":"borealis","label":"Borealis"},{"id":"cosmos","label":"Cosmos"}]}
+model screen ask
+wait 1000
+snapshot ask_question
+net_text {"op":"ask.close","id":"a_0000000000000002","reason":"withdrawn"}
+model screen idle
+net_text {"op":"ask","id":"a_0000000000000003","kind":"question","title":"Pick the slides to keep","body":"Seven slides, choose any.","options":[]}
+model ask.answerable false
+wait 1000
+snapshot ask_elsewhere
+net_text {"op":"ask.close","id":"a_0000000000000003","reason":"expired"}
+model screen idle
+
+# ---- A card, an 8x8 image (4 green rows, 4 white rows), a push -------------
+net_text {"op":"card","id":"c_build","title":"Build finished","body":"All 312 tests passed in 4 min 12 s.","ttl_s":0}
+model screen card
+wait 1000
+snapshot card
+net_text {"op":"card.close","id":"c_build"}
+model screen idle
+net_text {"op":"image.begin","id":"i_flag","stream":1,"w":8,"h":8,"ttl_s":0}
+net_binary 0301902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902e902effffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+net_text {"op":"image.end","stream":1}
+model screen image
+wait 1000
+snapshot image
+net_text {"op":"card.close","id":"i_flag"}
+model screen idle
+net_text {"op":"post","id":"p_brief","bot":{"id":"b_jev","name":"Jev"},"kind":"routine","text":"Morning brief is ready: 3 meetings, 2 reviews waiting.","speak":false}
+model toast.visible true
+wait 500
+snapshot post_toast
+model toast.visible false 30000
+net_text {"op":"x-keepalive"}
+
+# ---- Offline: replaced elsewhere, TALK takes it back; then a dropped session
+net_text {"op":"error","code":"replaced","message":"Another connection took over."}
+model screen offline
+model offline.reason in_use_elsewhere
+wait 1000
+snapshot offline_in_use
+talk_down
+wait 400
+talk_up
+wait 300
+net_open
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Omkar's computer"}
+expect prove
+net_text {"op":"ready","session":"s_0123456789ac","bot":{"id":"b_jev","name":"Jev"},"settings":{"speak_pushes":false}}
+model screen idle
+net_close
+model screen offline
+model offline.reason host_unreachable
+wait 500
+snapshot offline_unreachable
