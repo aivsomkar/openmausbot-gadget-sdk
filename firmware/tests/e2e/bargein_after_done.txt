@@ -1,0 +1,26 @@
+# Barge-in after done, in MausBot's usual order (--done-before-speech): done ok
+# comes right after the final reply and the speech follows it (spec §6.2 sends
+# done on turn.completed), so `expect done` passes before `expect speak.begin`.
+# TALK during that speech stops playback and starts a new turn without a stop,
+# because the old turn already has its done (spec §5.4); the host stops its own
+# speech with speak.stop when the new voice.begin arrives.
+host-args --done-before-speech --tone-ms 3000
+mic tone 600
+speaker
+[host]
+await tx op=speak.stop
+[sim]
+expect ready
+talk_down
+wait 600
+talk_up
+expect voice.end
+expect done 15000
+expect speak.begin 10000
+wait 300
+talk_down
+expect voice.begin
+# stay connected until the host has stopped the old speech
+expect speak.stop
+[check]
+no-event rx op=stop

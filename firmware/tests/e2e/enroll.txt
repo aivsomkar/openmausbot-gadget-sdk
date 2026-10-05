@@ -1,0 +1,17 @@
+# Enrollment with the pairing code, then a dropped socket and the reconnect
+# (2 s backoff) without the code: the gadget is now known by its key.
+[host]
+await enrolled
+await ready
+send {"cmd":"drop"}
+await ready timeout=20000
+[sim]
+expect ready
+model pair paired
+model screen idle
+model bot_name Fake Bot
+expect ready 20000
+model screen idle
+console status
+[check]
+no-event refused

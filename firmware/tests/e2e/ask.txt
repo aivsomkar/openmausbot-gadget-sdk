@@ -1,0 +1,27 @@
+# A permission ask answered by touch, a post with its toast, a card and the
+# built-in chime action.
+[host]
+await ready
+send {"cmd":"ask","id":"a_e2e","kind":"permission","title":"Run a shell command?","body":"ls -la"}
+await answer id=a_e2e option=allow
+send {"cmd":"post","kind":"routine","text":"Morning brief is ready"}
+send {"cmd":"card","id":"c_e2e","title":"Build passed","body":"main is green","ttl_s":0}
+send {"cmd":"act","id":"x_e2e","name":"chime"}
+await act.result id=x_e2e ok=true
+[sim]
+expect ready
+expect ask
+model screen ask
+wait 700
+# Allow is x 76..227, y 337..388 on the 466 px screen
+touch 152 363
+release
+expect answer
+expect ask.close
+expect post
+model toast.visible true
+expect card
+model screen card
+model card.title Build passed
+expect act
+expect act.result

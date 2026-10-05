@@ -38,7 +38,15 @@ FetchContent_Declare(mbedtls
   URL_HASH SHA256=${_gadget_mbedtls_sha}
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 
-FetchContent_MakeAvailable(cjson unity mbedtls)
+# wslay 1.1.1 (MIT), the simulator's WebSocket framing. Populate only: its
+# CMakeLists needs CMake < 3.5 compatibility; we compile its five sources.
+FetchContent_Declare(wslay
+  URL https://github.com/tatsuhiro-t/wslay/archive/refs/tags/release-1.1.1.tar.gz
+  URL_HASH SHA256=7b9f4b9df09adaa6e07ec309b68ab376c0db2cfd916613023b52a47adfda224a
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  SOURCE_SUBDIR _populate_only_)
+
+FetchContent_MakeAvailable(cjson unity mbedtls wslay)
 
 add_library(gadget_mbedcrypto INTERFACE)
 if(TARGET tfpsacrypto)
@@ -52,4 +60,20 @@ target_include_directories(cjson PUBLIC ${cjson_SOURCE_DIR})
 set_target_properties(cjson PROPERTIES C_EXTENSIONS OFF)
 if(UNIX AND NOT APPLE)
   target_link_libraries(cjson PUBLIC m)   # cJSON uses fabs/floor; macOS has libm in libSystem
+endif()
+
+set(_wslay_gen ${CMAKE_BINARY_DIR}/wslay_gen)
+file(MAKE_DIRECTORY ${_wslay_gen}/wslay)
+file(WRITE ${_wslay_gen}/wslay/wslayver.h "#ifndef WSLAYVER_H\n#define WSLAYVER_H\n#define WSLAY_VERSION \"1.1.1\"\n#endif\n")
+file(WRITE ${_wslay_gen}/config.h "#define HAVE_ARPA_INET_H 1\n#define HAVE_NETINET_IN_H 1\n")
+add_library(wslay STATIC
+  ${wslay_SOURCE_DIR}/lib/wslay_event.c
+  ${wslay_SOURCE_DIR}/lib/wslay_frame.c
+  ${wslay_SOURCE_DIR}/lib/wslay_net.c
+  ${wslay_SOURCE_DIR}/lib/wslay_queue.c
+  ${wslay_SOURCE_DIR}/lib/wslay_stack.c)
+target_include_directories(wslay PUBLIC ${wslay_SOURCE_DIR}/lib/includes ${_wslay_gen} PRIVATE ${wslay_SOURCE_DIR}/lib)
+target_compile_definitions(wslay PRIVATE HAVE_CONFIG_H _POSIX_C_SOURCE=200809L)
+if(APPLE)
+  target_compile_definitions(wslay PRIVATE _DARWIN_C_SOURCE)
 endif()

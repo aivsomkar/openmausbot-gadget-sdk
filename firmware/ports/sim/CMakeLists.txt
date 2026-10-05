@@ -22,7 +22,7 @@ add_executable(gadget-sim
   ui_stub.c
 )
 target_include_directories(gadget-sim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(gadget-sim PRIVATE gadget_core)
+target_link_libraries(gadget-sim PRIVATE gadget_core wslay)
 # -std=c11 hides POSIX (poll, getaddrinfo, clock_gettime, strdup) on Linux.
 target_compile_definitions(gadget-sim PRIVATE _POSIX_C_SOURCE=200809L GADGET_SIM_VERSION="${GADGET_SIM_VERSION}")
 if(APPLE)

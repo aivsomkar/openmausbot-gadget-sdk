@@ -1,0 +1,20 @@
+# Forced rollback: the new image ignores its first ready (--fail-probation),
+# probation (3 s here) runs out, and the gadget comes back on the old image.
+ota-image 30000
+sim-args --fail-probation --probation-ms 3000
+timeout 90000
+[host]
+await ready
+send {"cmd":"ota","image":"${TMP}/ota.bin","version":"1.1.0"}
+await ota phase=committed timeout=30000
+await rx op=hello fw=1.1.0 timeout=20000
+await rx op=hello fw=0.0.0-dev timeout=30000
+[sim]
+expect ready
+expect fw.commit 30000
+boot 1 10000
+expect ready 15000
+boot 2 15000
+expect ready 15000
+[check]
+no-event ota phase=installed

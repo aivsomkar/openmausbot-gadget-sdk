@@ -1,0 +1,19 @@
+# A signed update (test key t1) streamed with flow control, the restart into
+# the new image, its first ready, and fw.installed.
+ota-image 70000
+timeout 90000
+[host]
+await ready
+send {"cmd":"ota","image":"${TMP}/ota.bin","version":"1.1.0"}
+await ota phase=committed timeout=30000
+await rx op=hello fw=1.1.0 timeout=20000
+await ota phase=installed version=1.1.0 timeout=20000
+[sim]
+expect ready
+expect fw.offer
+model screen update
+expect fw.commit 30000
+boot 1 10000
+expect ready 15000
+expect fw.installed
+console status

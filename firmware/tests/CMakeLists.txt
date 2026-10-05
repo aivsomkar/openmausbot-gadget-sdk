@@ -62,3 +62,19 @@ if(GADGET_BUILD_SIM)
                     EXPECT "\"fw\":\"0\\.0\\.0-dev\"")
   gadget_sim_script(reboot_rollback amoled-175c ARGS "--pair 123456" EXPECT "\"fw\":\"0\\.0\\.0-dev\"")
 endif()
+
+# Simulator <-> fake host end-to-end scenarios (label e2e). They need Node
+# >= 22.18 on PATH and `npm ci` at the repo root (the fake host imports ws).
+if(GADGET_BUILD_SIM)
+  find_program(GADGET_NODE node)
+  if(GADGET_NODE)
+    foreach(scenario enroll voice bargein bargein_after_done ask ota rollback)
+      add_test(NAME e2e.${scenario}
+               COMMAND ${GADGET_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/e2e/run.ts --sim $<TARGET_FILE:gadget-sim>
+                       ${CMAKE_CURRENT_SOURCE_DIR}/e2e/${scenario}.txt)
+      set_tests_properties(e2e.${scenario} PROPERTIES LABELS e2e TIMEOUT 150)
+    endforeach()
+  else()
+    message(STATUS "node not found: the e2e tests are not registered")
+  endif()
+endif()

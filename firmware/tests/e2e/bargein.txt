@@ -1,0 +1,19 @@
+# Barge-in: TALK during a long spoken reply stops playback, sends stop for the
+# old turn (the host answers speak.stop and done stopped), then a new turn starts.
+host-args --tone-ms 6000
+[host]
+await turn phase=speech timeout=15000
+await rx op=stop timeout=15000
+await tx op=done outcome=stopped
+await rx op=voice.begin
+[sim]
+expect ready
+console say "tell me a long story"
+expect speak.begin 10000
+wait 800
+talk_down
+expect stop
+wait 600
+talk_up
+expect voice.begin
+expect voice.end

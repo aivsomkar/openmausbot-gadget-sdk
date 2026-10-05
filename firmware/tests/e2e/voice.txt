@@ -1,0 +1,29 @@
+# A held TALK with a WAV mic: voice.begin, mic frames, voice.end, heard,
+# working, cumulative replies, speech into a speaker WAV, done. Then a typed turn.
+board lcd-154
+mic tone 1500
+speaker
+[host]
+await rx op=voice.begin
+await rx op=voice.end
+await turn phase=done outcome=ok timeout=20000
+await rx op=say
+[sim]
+expect ready
+talk_down
+wait 1500
+talk_up
+expect voice.end
+expect heard
+model thinking.heard ~calendar
+expect reply
+expect speak.begin 10000
+model screen speaking 3000
+expect done 15000
+model reply.text ~two meetings
+model reply.final true
+console say "hello there"
+expect say
+expect done 15000
+[check]
+wav-min-ms spk.wav 700
