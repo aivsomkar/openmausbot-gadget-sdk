@@ -26,6 +26,7 @@ set(port_srcs
   hal_audio.c
   hal_input.c
   hal_battery.c
+  hal_ota.c
   display.c)
 
 set(logic_srcs
@@ -38,7 +39,8 @@ set(logic_srcs
   logic/pl_audio.c
   logic/pl_input.c
   logic/pl_power.c
-  logic/pl_display.c)
+  logic/pl_display.c
+  logic/pl_otaq.c)
 
 set(port_include_dirs "." "logic" "drivers" "${board_dir}")
 
