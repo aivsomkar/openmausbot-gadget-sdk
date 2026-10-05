@@ -140,6 +140,12 @@ bool display_ask_input(const gadget_input_t *in);
 bool display_dismiss(void);                     /* CANCEL / swipe down: image, then card, then toast */
 bool display_tap(void);                         /* a tap hides the toast */
 
+/* ---- actions.c ------------------------------------------------------------------ */
+void actions_init(void);                        /* registers the built-in chime */
+void actions_deinit(void);
+bool actions_on_msg(const gp_msg_t *m);         /* act -> exactly one act.result */
+const gp_action_decl_t *actions_decls(uint8_t *count);   /* for hello */
+
 /* ---- console_cmd.c ------------------------------------------------------------- */
 void console_exec_line(const char *line);       /* NULL: an over-long line was dropped */
 void console_on_scan(const gadget_wifi_scan_ev_t *scan);

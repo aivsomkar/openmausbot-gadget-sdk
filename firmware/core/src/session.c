@@ -75,6 +75,7 @@ gadget_status_t session_send_binary(const uint8_t *frame, size_t len) {
 static void send_hello(void) {
   gp_hello_t h = {.id = g_core.id, .pubkey_b64 = g_core.pub_b64, .name = g_core.name, .fw = g_core.fw,
                   .board = g_core.board};
+  h.actions = actions_decls(&h.n_actions);
   gadget_battery_t batt;
   if (g_core.board->has_battery && hal_battery_read(&batt)) {
     h.battery_valid = true;

@@ -235,6 +235,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
   hal_log(GADGET_LOG_INFO, CORE_TAG, "%s on %s, fw %s", g_core.id, g_core.board->id, g_core.fw);
 
   g_core.initialized = true;
+  actions_init();
   model_commit();
   return GADGET_OK;
 }
@@ -287,6 +288,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
 
 void core_deinit(void) {
   if (g_core.initialized) {
+    actions_deinit();
     display_deinit();
     audio_deinit();
     interaction_deinit();
@@ -325,6 +327,7 @@ void core_on_msg(const gp_msg_t *m) {
   if (interaction_on_msg(m)) return;
   if (audio_on_msg(m)) return;
   if (display_on_msg(m)) return;
+  if (actions_on_msg(m)) return;
   switch (m->op) {
     default:
       hal_log(GADGET_LOG_DEBUG, CORE_TAG, "ignored %s", gp_op_name(m->op));
