@@ -25,6 +25,7 @@ set(PORT_LOGIC_SRCS
   ${ESP_DIR}/main/logic/pl_util.c
   ${ESP_DIR}/main/logic/pl_scan.c
   ${ESP_DIR}/main/logic/pl_wifi.c
+  ${ESP_DIR}/main/logic/pl_wsasm.c
 )
 
 add_library(port_logic STATIC ${PORT_LOGIC_SRCS})
@@ -46,3 +47,4 @@ port_test(test_pl_event)
 port_test(test_pl_util)
 port_test(test_pl_scan)
 port_test(test_pl_wifi)
+port_test(test_pl_wsasm)
