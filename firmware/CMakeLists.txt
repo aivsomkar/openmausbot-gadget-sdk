@@ -30,6 +30,10 @@ include(cmake/deps.cmake)
 
 add_subdirectory(core)
 
+if(GADGET_BUILD_SIM)
+  add_subdirectory(ports/sim)
+endif()
+
 if(GADGET_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
