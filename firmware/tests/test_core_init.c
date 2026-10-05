@@ -51,6 +51,35 @@ static void test_unusable_key_is_replaced(void) {
   fake_storage_put_blob(GADGET_KEY_DEV_KEY, "short", 5);
   fake_boot("amoled-175c");
   TEST_ASSERT_EQUAL_size_t(32, fake_storage_blob_len(GADGET_KEY_DEV_KEY));
+  /* longer than the key buffer (the read says LIMIT), and a scalar P-256 refuses */
+  static const uint8_t big[40] = {1};
+  static const uint8_t zero[32] = {0};
+  fake_storage_put_blob(GADGET_KEY_DEV_KEY, big, sizeof big);
+  int writes = fake_storage_writes();
+  fake_boot("amoled-175c");
+  TEST_ASSERT_EQUAL_size_t(32, fake_storage_blob_len(GADGET_KEY_DEV_KEY));
+  TEST_ASSERT_EQUAL_INT(writes + 1, fake_storage_writes());
+  fake_storage_put_blob(GADGET_KEY_DEV_KEY, zero, sizeof zero);
+  writes = fake_storage_writes();
+  fake_boot("amoled-175c");
+  TEST_ASSERT_EQUAL_INT(writes + 1, fake_storage_writes());
+}
+
+/* spec §4.2: the identity survives a read that failed; only a missing or
+ * unusable key is replaced. */
+static void test_a_failed_key_read_keeps_the_stored_key(void) {
+  uint8_t priv[32];
+  size_t n = 0;
+  gadget_hex_decode(FAKE_RFC_PRIV_HEX, priv, sizeof priv, &n);
+  fake_storage_put_blob(GADGET_KEY_DEV_KEY, priv, sizeof priv);
+  fake_storage_read_error(GADGET_KEY_DEV_KEY, GADGET_ERR_IO);
+  core_config_t cfg = {.board = gadget_board_by_id("amoled-175c"), .fw_version = "1.0.0", .prng_seed = 1};
+  TEST_ASSERT_EQUAL_INT(GADGET_ERR_IO, core_init(&cfg));
+  TEST_ASSERT_EQUAL_INT(0, fake_storage_writes()); /* dev_key not overwritten */
+  core_deinit();
+  fake_storage_read_error(GADGET_KEY_DEV_KEY, GADGET_OK);
+  fake_boot("amoled-175c");
+  TEST_ASSERT_EQUAL_STRING(FAKE_RFC_ID, core_device_id());
 }
 
 static void test_names(void) {
@@ -111,6 +140,7 @@ int main(void) {
   RUN_TEST(test_reboot_keeps_the_identity);
   RUN_TEST(test_stored_key_gives_the_contract_id);
   RUN_TEST(test_unusable_key_is_replaced);
+  RUN_TEST(test_a_failed_key_read_keeps_the_stored_key);
   RUN_TEST(test_names);
   RUN_TEST(test_stored_wifi_is_joined_at_boot);
   RUN_TEST(test_bad_config_is_refused);

@@ -57,6 +57,7 @@ static void test_a_held_talk_records_and_sends(void) {
   fake_input(GADGET_IN_TALK_UP, 0, 0);
   fake_run(10);
   TEST_ASSERT_FALSE(fake_mic_running());
+  TEST_ASSERT_EQUAL_INT(1, fake_mic_stops()); /* once per press */
   TEST_ASSERT_EQUAL_size_t(50, fake_ws_bin_sent()); /* the 15 buffered frames are sent too */
   size_t len = 0;
   const uint8_t *f = fake_ws_bin(0, &len);
@@ -159,6 +160,9 @@ static void test_text_outside_the_charset_is_folded(void) {
   strcpy(t, talk(30));
   host("{\"op\":\"heard\",\"turn\":\"%s\",\"text\":\"caf\xc3\xa9 \xe2\x98\x95 \xe2\x86\x92 ok\xe2\x80\xa6\"}", t);
   TEST_ASSERT_EQUAL_STRING("caf\xc3\xa9 ? \xe2\x86\x92 ok\xe2\x80\xa6", core_ui_model()->thinking.heard);
+  /* DEL and the C1 controls U+0080..U+009F are outside it too; U+00A0..U+00FF are in */
+  host("{\"op\":\"heard\",\"turn\":\"%s\",\"text\":\"a\\u007fb\\u0085c\\u009fd\\u00a0e\\u00ff\"}", t);
+  TEST_ASSERT_EQUAL_STRING("a?b?c?d\xc2\xa0" "e\xc3\xbf", core_ui_model()->thinking.heard);
 }
 
 static void test_tap_on_a_reply_goes_back_to_idle(void) {
@@ -206,6 +210,44 @@ static void test_swipe_down_while_recording_drops_it(void) {
   TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("voice.end"));
 }
 
+/* A swipe down worked out from raw touch events, which is all the ports send
+ * (contract §2.5): its own touch is not a recording, so it reaches the turn. */
+static void swipe_down_by_touch(void) {
+  fake_input(GADGET_IN_TOUCH_DOWN, 233, 100);
+  fake_run(100);
+  fake_input(GADGET_IN_TOUCH_MOVE, 233, 210); /* 110 px down within 300 ms, more than 466 / 8 */
+  fake_run(50);
+  fake_input(GADGET_IN_TOUCH_UP, 233, 250);
+  fake_run(10);
+}
+
+static void test_a_touch_swipe_down_stops_the_turn_and_clears_the_reply(void) {
+  fake_ready("amoled-175"); /* touch and TALK, no CANCEL button */
+  fake_input(GADGET_IN_TOUCH_DOWN, 233, 233);
+  fake_mic_frames(30, 3000);
+  fake_input(GADGET_IN_TOUCH_UP, 233, 233);
+  fake_run(10);
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.end"));
+  char t[33];
+  strcpy(t, last_turn("voice.begin"));
+  swipe_down_by_touch();
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("stop"));
+  TEST_ASSERT_EQUAL_STRING(t, last_turn("stop"));
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.begin")); /* the swipe recorded nothing */
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("voice.drop"));
+  TEST_ASSERT_FALSE(fake_mic_running());
+  swipe_down_by_touch();
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("stop")); /* once */
+  host("{\"op\":\"reply\",\"turn\":\"%s\",\"text\":\"You have\"}", t);
+  host("{\"op\":\"done\",\"turn\":\"%s\",\"outcome\":\"stopped\"}", t);
+  fake_run(10);
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_REPLY, core_ui_model()->screen);
+  swipe_down_by_touch();
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_IDLE, core_ui_model()->screen);
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("stop"));
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.begin"));
+}
+
 static void test_cancel_while_thinking_sends_stop_once(void) {
   fake_ready("lcd-154");
   char t[33];
@@ -233,6 +275,8 @@ static void test_recording_stops_at_60_s_with_a_countdown(void) {
   TEST_ASSERT_EQUAL_UINT8(1, core_ui_model()->listening.countdown_s);
   fake_mic_frames(100, 1000);  /* past 60 s */
   TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.end"));
+  TEST_ASSERT_FALSE(fake_mic_running());
+  TEST_ASSERT_EQUAL_INT(1, fake_mic_stops());
   cJSON *ve = fake_ws_last("voice.end");
   int ms = cJSON_GetObjectItem(ve, "ms")->valueint;
   cJSON_Delete(ve);
@@ -241,6 +285,33 @@ static void test_recording_stops_at_60_s_with_a_countdown(void) {
   fake_input(GADGET_IN_TALK_UP, 0, 0); /* the late release does nothing */
   fake_run(10);
   TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.end"));
+  TEST_ASSERT_EQUAL_INT(1, fake_mic_stops());
+}
+
+/* spec §4.4: a turn is in flight from its voice.begin, and the host may end it
+ * early (an unsupported mic rate, a hub-side failure) while it still records. */
+static void test_done_while_recording_ends_the_turn(void) {
+  fake_ready("lcd-154");
+  fake_input(GADGET_IN_TALK_DOWN, 0, 0);
+  fake_mic_frames(30, 3000);
+  char t[33];
+  strcpy(t, last_turn("voice.begin"));
+  host("{\"op\":\"done\",\"turn\":\"%s\",\"outcome\":\"failed\",\"reason\":\"Unsupported mic rate\"}", t);
+  fake_run(10);
+  TEST_ASSERT_FALSE(fake_mic_running());
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_REPLY, core_ui_model()->screen);
+  TEST_ASSERT_EQUAL_INT(UI_MAUS_ALERTING, core_ui_model()->maus);
+  TEST_ASSERT_TRUE(core_ui_model()->reply.failed);
+  TEST_ASSERT_EQUAL_STRING("Unsupported mic rate", core_ui_model()->reply.reason);
+  size_t frames = fake_ws_bin_sent();
+  fake_mic_frames(5, 3000); /* frames the port had already captured */
+  fake_input(GADGET_IN_TALK_UP, 0, 0);
+  fake_run(10);
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("voice.end"));
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("voice.drop"));
+  TEST_ASSERT_EQUAL_size_t(frames, fake_ws_bin_sent());
+  TEST_ASSERT_EQUAL_INT(1, fake_mic_stops());
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_REPLY, core_ui_model()->screen);
 }
 
 static void test_a_new_turn_stops_the_old_one_first(void) {
@@ -337,8 +408,10 @@ int main(void) {
   RUN_TEST(test_tap_on_a_reply_goes_back_to_idle);
   RUN_TEST(test_cancel_while_recording_drops_the_utterance);
   RUN_TEST(test_swipe_down_while_recording_drops_it);
+  RUN_TEST(test_a_touch_swipe_down_stops_the_turn_and_clears_the_reply);
   RUN_TEST(test_cancel_while_thinking_sends_stop_once);
   RUN_TEST(test_recording_stops_at_60_s_with_a_countdown);
+  RUN_TEST(test_done_while_recording_ends_the_turn);
   RUN_TEST(test_a_new_turn_stops_the_old_one_first);
   RUN_TEST(test_a_dropped_session_ends_the_turn_locally);
   RUN_TEST(test_talk_reconnects_after_replaced);

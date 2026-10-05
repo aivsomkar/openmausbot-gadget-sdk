@@ -8682,7 +8682,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
 ```diff
 --- a/firmware/core/src/core.c
 +++ b/firmware/core/src/core.c
-@@ -239,6 +239,12 @@ void core_event(const gadget_event_t *ev) {
+@@ -246,6 +246,12 @@ void core_event(const gadget_event_t *ev) {
      case GADGET_EV_MIC_FRAME:
        interaction_mic(&ev->u.mic);
        break;
@@ -8715,7 +8715,7 @@ Change `firmware/core/CMakeLists.txt` exactly as this diff shows (`-` lines go, 
 - [ ] **Step 4: Run the tests**
 
 Run: `cmake --build build/host -j10 && ctest --test-dir build/host --output-on-failure -L "unit|vectors"`
-Expected: `100% tests passed, 0 tests failed out of 10`; `test_console` prints `12 Tests 0 Failures 0 Ignored` and `test_session` prints `24 Tests 0 Failures 0 Ignored`.
+Expected: `100% tests passed, 0 tests failed out of 10`; `test_console` prints `12 Tests 0 Failures 0 Ignored` and `test_session` prints `25 Tests 0 Failures 0 Ignored`.
 
 - [ ] **Step 5: Commit**
 
@@ -9296,7 +9296,7 @@ Change `firmware/core/src/interaction.c` exactly as this diff shows (`-` lines g
    if (I.reply_shown && !I.in_flight) clear_turn_model();
  }
  
-@@ -277,6 +290,7 @@ void interaction_tick(void) {
+@@ -280,6 +293,7 @@ void interaction_tick(void) {
        g_core.model.listening.countdown_s = (uint8_t)((GADGET_UTTERANCE_MAX_MS - elapsed + 999u) / 1000u);
      }
    }
@@ -9334,7 +9334,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
 ```diff
 --- a/firmware/core/src/core.c
 +++ b/firmware/core/src/core.c
-@@ -215,6 +215,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
+@@ -222,6 +222,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
    publish_identity();
    session_init();
    interaction_init();
@@ -9342,7 +9342,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    if (g_core.wifi_ssid[0] != '\0') hal_wifi_connect(g_core.wifi_ssid, g_core.wifi_pass);
  
    cJSON *boot = cJSON_CreateObject();
-@@ -268,6 +269,7 @@ void core_tick(uint64_t now_ms) {
+@@ -275,6 +276,7 @@ void core_tick(uint64_t now_ms) {
    g_core.ticked = true;
    session_tick();
    interaction_tick();
@@ -9350,7 +9350,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    screens_update();
    model_commit();
  }
-@@ -276,6 +278,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
+@@ -283,6 +285,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
  
  void core_deinit(void) {
    if (g_core.initialized) {
@@ -9358,7 +9358,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
      interaction_deinit();
      session_deinit();
    }
-@@ -303,11 +306,13 @@ void core_on_ready(void) { hal_log(GADGET_LOG_INFO, CORE_TAG, "talking to %s", g
+@@ -310,11 +313,13 @@ void core_on_ready(void) { hal_log(GADGET_LOG_INFO, CORE_TAG, "talking to %s", g
  
  void core_on_session_lost(void) {
    hal_log(GADGET_LOG_INFO, CORE_TAG, "session lost");
@@ -9372,7 +9372,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    switch (m->op) {
      default:
        hal_log(GADGET_LOG_DEBUG, CORE_TAG, "ignored %s", gp_op_name(m->op));
-@@ -316,8 +321,10 @@ void core_on_msg(const gp_msg_t *m) {
+@@ -323,8 +328,10 @@ void core_on_msg(const gp_msg_t *m) {
  }
  
  void core_on_binary(gp_bin_kind_t kind, uint8_t stream, const uint8_t *payload, size_t len) {
@@ -9651,6 +9651,28 @@ static void test_images(void) {
   TEST_ASSERT_EQUAL_INT(UI_SCREEN_CARD, core_ui_model()->screen);
 }
 
+/* Ports send raw touch events (contract §2.5). A swipe down worked out from
+ * them dismisses the image, then the card, on a board with no CANCEL button. */
+static void swipe_down_by_touch(void) {
+  fake_input(GADGET_IN_TOUCH_DOWN, 233, 100);
+  fake_run(100);
+  fake_input(GADGET_IN_TOUCH_MOVE, 233, 210); /* 110 px down within 300 ms */
+  fake_input(GADGET_IN_TOUCH_UP, 233, 250);
+  fake_run(10);
+}
+
+static void test_a_touch_swipe_dismisses_the_image_then_the_card(void) {
+  fake_ready("amoled-175");
+  fake_ws_in("{\"op\":\"card\",\"id\":\"c1\",\"title\":\"Under\",\"body\":\"\"}");
+  send_image(5, 100, 100, 100u * 100u * 2u);
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_IMAGE, core_ui_model()->screen);
+  swipe_down_by_touch();
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_CARD, core_ui_model()->screen);
+  swipe_down_by_touch();
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_IDLE, core_ui_model()->screen);
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("voice.begin"));
+}
+
 static void test_posts_toast_and_chime(void) {
   fake_ready("amoled-175c");
   fake_ws_in("{\"op\":\"post\",\"id\":\"p1\",\"bot\":{\"id\":\"b_jev\",\"name\":\"Jev\"},\"kind\":\"routine\","
@@ -9764,6 +9786,7 @@ int main(void) {
   RUN_TEST(test_ask_expiry);
   RUN_TEST(test_cards_show_expire_and_dismiss);
   RUN_TEST(test_images);
+  RUN_TEST(test_a_touch_swipe_dismisses_the_image_then_the_card);
   RUN_TEST(test_posts_toast_and_chime);
   RUN_TEST(test_spoken_post_chimes_then_speaks);
   RUN_TEST(test_no_chime_over_speech);
@@ -10397,7 +10420,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
 ```diff
 --- a/firmware/core/src/core.c
 +++ b/firmware/core/src/core.c
-@@ -216,6 +216,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
+@@ -223,6 +223,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
    session_init();
    interaction_init();
    audio_init();
@@ -10405,7 +10428,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    if (g_core.wifi_ssid[0] != '\0') hal_wifi_connect(g_core.wifi_ssid, g_core.wifi_pass);
  
    cJSON *boot = cJSON_CreateObject();
-@@ -270,6 +271,7 @@ void core_tick(uint64_t now_ms) {
+@@ -277,6 +278,7 @@ void core_tick(uint64_t now_ms) {
    session_tick();
    interaction_tick();
    audio_tick();
@@ -10413,7 +10436,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    screens_update();
    model_commit();
  }
-@@ -278,6 +280,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
+@@ -285,6 +287,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
  
  void core_deinit(void) {
    if (g_core.initialized) {
@@ -10421,7 +10444,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
      audio_deinit();
      interaction_deinit();
      session_deinit();
-@@ -308,11 +311,13 @@ void core_on_session_lost(void) {
+@@ -315,11 +318,13 @@ void core_on_session_lost(void) {
    hal_log(GADGET_LOG_INFO, CORE_TAG, "session lost");
    audio_stop_local();
    interaction_on_session_lost();
@@ -10435,7 +10458,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    switch (m->op) {
      default:
        hal_log(GADGET_LOG_DEBUG, CORE_TAG, "ignored %s", gp_op_name(m->op));
-@@ -325,6 +330,9 @@ void core_on_binary(gp_bin_kind_t kind, uint8_t stream, const uint8_t *payload,
+@@ -332,6 +337,9 @@ void core_on_binary(gp_bin_kind_t kind, uint8_t stream, const uint8_t *payload,
      case GP_BIN_SPEAKER:
        audio_on_binary(stream, payload, len);
        break;
@@ -10465,7 +10488,7 @@ Change `firmware/core/CMakeLists.txt` exactly as this diff shows (`-` lines go, 
 - [ ] **Step 4: Run the tests**
 
 Run: `cmake --build build/host -j10 && ctest --test-dir build/host --output-on-failure -L "unit|vectors"`
-Expected: `100% tests passed, 0 tests failed out of 12`; `test_display` prints `12 Tests 0 Failures 0 Ignored`.
+Expected: `100% tests passed, 0 tests failed out of 12`; `test_display` prints `13 Tests 0 Failures 0 Ignored`.
 
 - [ ] **Step 5: Commit**
 
@@ -10990,7 +11013,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
 ```diff
 --- a/firmware/core/src/core.c
 +++ b/firmware/core/src/core.c
-@@ -228,6 +228,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
+@@ -235,6 +235,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
    hal_log(GADGET_LOG_INFO, CORE_TAG, "%s on %s, fw %s", g_core.id, g_core.board->id, g_core.fw);
  
    g_core.initialized = true;
@@ -10998,7 +11021,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    model_commit();
    return GADGET_OK;
  }
-@@ -280,6 +281,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
+@@ -287,6 +288,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
  
  void core_deinit(void) {
    if (g_core.initialized) {
@@ -11006,7 +11029,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
      display_deinit();
      audio_deinit();
      interaction_deinit();
-@@ -318,6 +320,7 @@ void core_on_msg(const gp_msg_t *m) {
+@@ -325,6 +327,7 @@ void core_on_msg(const gp_msg_t *m) {
    if (interaction_on_msg(m)) return;
    if (audio_on_msg(m)) return;
    if (display_on_msg(m)) return;
@@ -11745,7 +11768,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
 ```diff
 --- a/firmware/core/src/core.c
 +++ b/firmware/core/src/core.c
-@@ -217,6 +217,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
+@@ -224,6 +224,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
    interaction_init();
    audio_init();
    display_init();
@@ -11753,7 +11776,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    if (g_core.wifi_ssid[0] != '\0') hal_wifi_connect(g_core.wifi_ssid, g_core.wifi_pass);
  
    cJSON *boot = cJSON_CreateObject();
-@@ -248,6 +249,10 @@ void core_event(const gadget_event_t *ev) {
+@@ -255,6 +256,10 @@ void core_event(const gadget_event_t *ev) {
      case GADGET_EV_WIFI_SCAN:
        console_on_scan(&ev->u.scan);
        break;
@@ -11764,7 +11787,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
      case GADGET_EV_WIFI_STATE:
      case GADGET_EV_WS_OPEN:
      case GADGET_EV_WS_TEXT:
-@@ -273,6 +278,7 @@ void core_tick(uint64_t now_ms) {
+@@ -280,6 +285,7 @@ void core_tick(uint64_t now_ms) {
    interaction_tick();
    audio_tick();
    display_tick();
@@ -11772,7 +11795,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    screens_update();
    model_commit();
  }
-@@ -281,6 +287,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
+@@ -288,6 +294,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
  
  void core_deinit(void) {
    if (g_core.initialized) {
@@ -11780,7 +11803,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
      actions_deinit();
      display_deinit();
      audio_deinit();
-@@ -307,13 +314,17 @@ void core_tap(core_tap_dir_t dir, const char *op, const char *json, size_t len)
+@@ -314,13 +321,17 @@ void core_tap(core_tap_dir_t dir, const char *op, const char *json, size_t len)
  
  /* ---- session hooks ------------------------------------------------------------------ */
  
@@ -11799,7 +11822,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
  }
  
  void core_on_msg(const gp_msg_t *m) {
-@@ -321,6 +332,7 @@ void core_on_msg(const gp_msg_t *m) {
+@@ -328,6 +339,7 @@ void core_on_msg(const gp_msg_t *m) {
    if (audio_on_msg(m)) return;
    if (display_on_msg(m)) return;
    if (actions_on_msg(m)) return;
@@ -11807,7 +11830,7 @@ Change `firmware/core/src/core.c` exactly as this diff shows (`-` lines go, `+` 
    switch (m->op) {
      default:
        hal_log(GADGET_LOG_DEBUG, CORE_TAG, "ignored %s", gp_op_name(m->op));
-@@ -336,6 +348,9 @@ void core_on_binary(gp_bin_kind_t kind, uint8_t stream, const uint8_t *payload,
+@@ -343,6 +355,9 @@ void core_on_binary(gp_bin_kind_t kind, uint8_t stream, const uint8_t *payload,
      case GP_BIN_IMAGE:
        display_on_binary(stream, payload, len);
        break;
@@ -15501,6 +15524,16 @@ Review of Tasks 1–5 (commit `fix(P2a): address review of tasks 1-5`). Where th
 6. **`psa_crypto_init` outside Unity (Task 3, `test_crypto.c`).** `main` checks `psa_crypto_init()` with a plain `if`, prints `psa_crypto_init failed` and returns 3, as `test_vectors.c` does. A `TEST_ASSERT` before `UNITY_BEGIN` and outside `RUN_TEST` would longjmp to an unset frame.
 7. **Board table test (Task 5, `test_layout.c`).** `test_board_table_matches_contract` compares every field of every row of `gadget_board_at(i)`, in order, against an expected copy of contract §2.3's table (all 11 columns), checks that `gadget_board_by_id` returns the same row, and that there are exactly four. Before, it spot-checked some fields and missed, for example, `lcd-154`'s `input_mask` and `round`, `devkit`'s `display_name` and three `speaker_rate`s.
 8. **`gadget_hal.h` follows the contract (Task 1).** The committed header is contract §2.5 byte for byte. Task 1's copy above was out of date in two comments and now matches: `hal_spk_stop` (silent at once with a codec mute, within one DMA ring, at most 60 ms on the devkit, without one) and `hal_wifi_connect`, which adds a requirement: `hal_wifi_state()` reports `GADGET_WIFI_CONNECTING` (or `CONNECTED`) before `hal_wifi_connect` returns. Task 7's `fake_hal.c` now sets `CONNECTING` there unless it is already `CONNECTED` (so the tests that start from `CONNECTED` keep their connection and `test_wifi_drop_and_return` still starts from `CONNECTING`). Task 15a's `sim_wifi.c` already meets it, since its `hal_wifi_state()` is always `CONNECTED`, and so does P2c's port, whose `pl_wifi_connect()` reports `CONNECTING` before `hal_wifi_connect` returns.
+
+Review of Tasks 6–9 (commit `fix(P2a): address review of tasks 6, 7, 8, 9`). Where these differ from the code blocks in Tasks 6–9, the repository files are authoritative. From that commit on, `test_core_init` prints `9 Tests 0 Failures 0 Ignored` (Task 7 expects 8 at its own commit), `test_session` prints `25` (Task 8 expects 24; Task 10's expected line now says 25) and `test_turns` prints `19` (Task 9 expects 17). Task 12 gains one test, so `test_display` prints `13`. CTest counts are unchanged. Every later diff of `core.c` (Tasks 10–14) now starts 7 lines further down, and so does the fifth hunk of Task 11's `interaction.c` diff, by 3 lines. Their hunk headers were moved to match, and no context line changed. Tasks 10–14 were replayed onto the fixed tree with `patch -p1 -F0`, and every hunk applied at offset 0. The result passed 14 of 14 CTest tests. None of these changes the contract.
+
+9. **A swipe down from raw touch events reaches the turn (Task 9, `interaction.c`).** Ports send only raw touch events (contract §2.5), and `GADGET_IN_SWIPE` comes only from the simulator script. The swipe's own `TOUCH_DOWN` starts a press, so `cancel_action()` only ended that press and returned. A swipe never sent `stop` or cleared a reply, and from Task 12 on it never reached `display_dismiss()`. On amoled-175, which has no CANCEL button, nothing could stop a running turn. In the `GADGET_IN_TOUCH_MOVE` branch, a swipe down now first calls `end_press()` when no recording is live: `if (!I.rec) end_press(); cancel_action();`. A swipe during a live recording still drops it with `voice.drop`. Otherwise `cancel_action()` sends `stop` once, clears the reply or, from Task 12 on, dismisses the image, card or toast. The `cancel_action()` hunks of Tasks 11 and 12 are unchanged; their early return now applies only to a recording or a TALK press. Tests: `test_a_touch_swipe_down_stops_the_turn_and_clears_the_reply` in `test_turns.c` (amoled-175, TOUCH_DOWN, a 110 px TOUCH_MOVE within 300 ms, TOUCH_UP) and Task 12's `test_a_touch_swipe_dismisses_the_image_then_the_card` in `test_display.c`. Both fail on the old branch: `Expected 1 Was 0` (no `stop`) and `Expected 9 Was 10` (the image stays up).
+10. **The model holds only the gadget charset (Task 7, `core.c`).** `fold_charset` kept DEL (U+007F) and the C1 controls U+0080–U+009F, which contract §2.1 and §2.8 leave out and the fonts cannot draw. It now writes `?` for both: the ASCII branch maps `0x7F` to `?`, and the two-byte branch keeps only `C3 xx` and `C2 A0..BF`. `test_text_outside_the_charset_is_folded` adds `"a\u007fb\u0085c\u009fd\u00a0e\u00ff"`, which gives `a?b?c?d`, then U+00A0, `e` and U+00FF.
+11. **A failed key read keeps the identity (Task 7, `core.c`).** `load_identity` made a new key after any failed `hal_storage_get_blob`, so one transient NVS read error at boot overwrote `dev_key` and forced a re-pair (spec §4.2). Now it makes a new key only when the read returns `GADGET_ERR_NOT_FOUND` or `GADGET_ERR_LIMIT`, when the length is not 32, or when `hal_crypto_pubkey` refuses the scalar. Any other error is logged and returned from `core_init`, and `dev_key` is not written. The fake HAL gains `fake_storage_read_error(key, err)`. Tests: `test_a_failed_key_read_keeps_the_stored_key` (an injected `GADGET_ERR_IO` makes `core_init` return it with no storage write, and the next boot gives `FAKE_RFC_ID`). `test_unusable_key_is_replaced` also checks a 40-byte blob (LIMIT) and an all-zero scalar, and each is replaced with exactly one write.
+12. **`done` while still recording ends the turn (Task 9, `interaction.c`).** A turn is in flight from its `voice.begin` (spec §4.4), and the host may end it early, for example with `Unsupported mic rate` or a hub-side failure. Before, a `done` that arrived while the turn was still recording was ignored. The release then sent `voice.end` and stayed on Thinking. `GP_OP_DONE` now also accepts `I.rec` with the recording's turn. It stops the mic through `end_press()` without sending `voice.end`, then makes the same failed or ok model update and sets `reply_until`. Test: `test_done_while_recording_ends_the_turn` (no `voice.end`, no `voice.drop`, no frames after `done`, mic stopped once, and Reply showing the reason).
+13. **Only a browse that worked can miss (Task 8, `session.c`).** A browse that failed (`ok` false) or ended because Wi-Fi dropped used to count as "found none". A gadget with a code and no `host_id` then halted in `HALT_NO_HOST` and never browsed again. Now `on_mdns` and `host_not_found` first check `hal_wifi_state()`. Without Wi-Fi, they go to `SS_WAIT_WIFI` without printing `hosts`, and the gadget browses again once Wi-Fi is back. A failed browse is a failed attempt (`schedule_retry`), not a miss. A browse that worked and found none or several still halts or retries as deviation 8 and contract D28 say. The fake HAL gains `fake_mdns_fail()`. Test: `test_host_auto_tries_again_after_a_failed_browse_or_a_wifi_drop`.
+14. **`hal_mic_stop` once per press (Task 9, `interaction.c`).** `finish_recording()` and the `end_press()` that follows it both stopped the mic, on release and at the 60 s limit. Contract §2.5 does not say a second stop is harmless. `finish_recording()` no longer stops the mic, and `end_press()` stops it once. The fake HAL gains `fake_mic_stops()`. `test_a_held_talk_records_and_sends` and `test_recording_stops_at_60_s_with_a_countdown` assert one stop.
+15. **The console splitter's corner cases (Task 6, `console.c`; a comment only).** `gadget_console_split` follows contract §2.11's `esp_console_split_argv` rules except in two corner cases, and both ports share the splitter. A quote inside a word groups as in a shell: `x"y z"` gives `xy z`, where ESP-IDF keeps that quote literally. An unknown escape keeps its backslash: `a\qb` stays `a\qb`, where ESP-IDF drops the pair. The contract header stays verbatim, so the note sits above the function in `console.c`. P2d's installer and console helper should always quote whole arguments and escape only `\\` and `\"`, which both splitters read the same way. P2d's tests already run `quoteArg` output through the real `gadget_console_split`.
 
 ## Self-review
 

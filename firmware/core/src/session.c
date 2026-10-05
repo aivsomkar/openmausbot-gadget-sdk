@@ -179,9 +179,17 @@ static void start_attempt(void) {
   S.st = SS_RESOLVING;
 }
 
+/* A browse that ended because Wi-Fi dropped is no miss: browse again once it is back. */
+static bool browse_lost_wifi(void) {
+  if (hal_wifi_state() == GADGET_WIFI_CONNECTED) return false;
+  S.st = SS_WAIT_WIFI;
+  return true;
+}
+
 /* host auto found none, or several and no stored host_id picks one (spec §5.6).
  * The hosts line prints once per run of misses, so the installer asks once. */
 static void host_not_found(const gadget_mdns_host_t *hosts, uint8_t count) {
+  if (browse_lost_wifi()) return;
   if (!S.hosts_printed) print_hosts(hosts, count);
   S.hosts_printed = true;
   S.host_not_found = true;
@@ -193,9 +201,14 @@ static void host_not_found(const gadget_mdns_host_t *hosts, uint8_t count) {
 }
 
 static void on_mdns(const gadget_mdns_ev_t *r) {
-  if (S.st != SS_RESOLVING) return;
+  if (S.st != SS_RESOLVING || browse_lost_wifi()) return;
+  if (!r->ok) {
+    hal_log(GADGET_LOG_WARN, TAG, "host lookup failed; trying again");
+    schedule_retry(); /* a failed browse is a failed attempt, not a miss */
+    return;
+  }
   const gadget_mdns_host_t *pick = NULL;
-  uint8_t count = r->ok ? r->count : 0;
+  uint8_t count = r->count;
   for (uint8_t i = 0; i < count; i++) {
     if (g_core.host_id[0] != '\0' && strcmp(r->hosts[i].id, g_core.host_id) == 0) pick = &r->hosts[i];
   }

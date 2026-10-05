@@ -34,6 +34,8 @@ static struct {
   uint64_t now;
   kv_t kv[MAX_KEYS];
   int storage_writes;
+  char read_error_key[16];
+  gadget_status_t read_error;
   char *lines[MAX_LINES];
   size_t n_lines;
   bool log_enabled;
@@ -57,6 +59,7 @@ static struct {
   bool mdns_unsupported;
   /* audio */
   bool mic_running;
+  int mic_stops;
   uint32_t spk_rate;
   size_t spk_accepted;
   size_t spk_buffered; /* samples queued but not yet "played" */
@@ -253,7 +256,15 @@ size_t fake_storage_blob_len(const char *key) {
 }
 int fake_storage_writes(void) { return F.storage_writes; }
 
+void fake_storage_read_error(const char *key, gadget_status_t err) {
+  snprintf(F.read_error_key, sizeof F.read_error_key, "%s", key);
+  F.read_error = err;
+}
+
+static bool read_fails(const char *key) { return F.read_error != GADGET_OK && strcmp(key, F.read_error_key) == 0; }
+
 gadget_status_t hal_storage_get_str(const char *key, char *buf, size_t cap) {
+  if (read_fails(key)) return F.read_error;
   kv_t *e = kv_find(key);
   if (e == NULL || e->blob) return GADGET_ERR_NOT_FOUND;
   if (e->len + 1 > cap) return GADGET_ERR_LIMIT;
@@ -269,6 +280,7 @@ gadget_status_t hal_storage_set_str(const char *key, const char *value) {
 }
 
 gadget_status_t hal_storage_get_blob(const char *key, void *buf, size_t cap, size_t *len) {
+  if (read_fails(key)) return F.read_error;
   kv_t *e = kv_find(key);
   if (e == NULL || !e->blob) return GADGET_ERR_NOT_FOUND;
   if (e->len > cap) return GADGET_ERR_LIMIT;
@@ -351,8 +363,12 @@ gadget_status_t hal_mic_start(uint32_t rate) {
   return GADGET_OK;
 }
 
-void hal_mic_stop(void) { F.mic_running = false; }
+void hal_mic_stop(void) {
+  F.mic_running = false;
+  F.mic_stops++;
+}
 bool fake_mic_running(void) { return F.mic_running; }
+int fake_mic_stops(void) { return F.mic_stops; }
 
 void fake_mic_frames(int n, int16_t amplitude) {
   int16_t pcm[GADGET_MIC_FRAME_SAMPLES];
@@ -569,6 +585,12 @@ void fake_mdns_result(const gadget_mdns_host_t *hosts, uint8_t count) {
   ev.u.mdns.hosts = hosts;
   ev.u.mdns.count = count;
   ev.u.mdns.ok = true;
+  core_event(&ev);
+}
+
+void fake_mdns_fail(void) {
+  gadget_event_t ev = {.type = GADGET_EV_MDNS};
+  ev.u.mdns.ok = false;
   core_event(&ev);
 }
 

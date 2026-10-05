@@ -49,6 +49,8 @@ const char *fake_storage_str(const char *key);  /* NULL when absent or a blob */
 bool fake_storage_has(const char *key);
 size_t fake_storage_blob_len(const char *key);  /* 0 when absent */
 int fake_storage_writes(void);                  /* set_* calls so far */
+/* hal_storage_get_str/_blob of key return err (an NVS read error); GADGET_OK clears it. */
+void fake_storage_read_error(const char *key, gadget_status_t err);
 
 /* ---- console output (hal_console_write) ------------------------------------- */
 size_t fake_console_count(void);
@@ -62,6 +64,7 @@ void fake_console_in(const char *line);         /* deliver GADGET_EV_CONSOLE_LIN
 void fake_input(gadget_input_type_t type, int16_t x, int16_t y);   /* deliver GADGET_EV_INPUT now */
 void fake_swipe(gadget_swipe_dir_t dir);
 bool fake_mic_running(void);
+int fake_mic_stops(void);                       /* hal_mic_stop calls */
 /* Deliver n 20 ms mic frames of a square wave with this amplitude, with
  * fake_run(20) after each. */
 void fake_mic_frames(int n, int16_t amplitude);
@@ -102,6 +105,7 @@ void fake_ws_clear(void);
 int fake_mdns_browses(void);
 void fake_mdns_unsupported(bool on);            /* hal_mdns_browse returns GADGET_ERR_UNSUPPORTED */
 void fake_mdns_result(const gadget_mdns_host_t *hosts, uint8_t count);   /* deliver GADGET_EV_MDNS */
+void fake_mdns_fail(void);                      /* deliver GADGET_EV_MDNS with ok false (browsing failed) */
 
 /* ---- OTA -------------------------------------------------------------------- */
 void fake_ota_set_running(hal_ota_img_state_t st);

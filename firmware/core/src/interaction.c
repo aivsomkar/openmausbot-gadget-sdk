@@ -130,13 +130,13 @@ static void start_recording(void) {
   hal_log(GADGET_LOG_INFO, TAG, "recording %s", I.rec_turn);
 }
 
+/* The caller's end_press() stops the mic, once. */
 static void finish_recording(void) {
   gp_voice_end_t ve = {.turn = I.rec_turn, .ms = I.rec_frames * 20u};
   session_send("voice.end", g_core_tx, gp_encode_voice_end(g_core_tx, sizeof g_core_tx, &ve));
   I.rec = false;
   I.in_flight = true;
   I.stop_sent = false;
-  hal_mic_stop();
 }
 
 static void cancel_recording(void) {
@@ -226,7 +226,10 @@ void interaction_input(const gadget_input_t *in) {
         int th = swipe_threshold();
         if (abs(dx) > th || abs(dy) > th) {
           I.moved = true;
-          if (dy > th && dy > abs(dx)) cancel_action(); /* swipe down */
+          if (dy > th && dy > abs(dx)) { /* swipe down */
+            if (!I.rec) end_press(); /* the swipe's own touch is not a recording: cancel what lies beneath */
+            cancel_action();
+          }
         }
       }
       break;
@@ -301,8 +304,14 @@ bool interaction_on_msg(const gp_msg_t *m) {
         I.reply_shown = mod->reply.text[0] != '\0';
       }
       break;
-    case GP_OP_DONE:
-      if (I.in_flight && strcmp(m->m.done.turn, I.turn) == 0) {
+    case GP_OP_DONE: {
+      /* a turn is in flight from its voice.begin, so the host may end it while it still records (spec §4.4) */
+      bool recording = I.rec && strcmp(m->m.done.turn, I.rec_turn) == 0;
+      if (recording || (I.in_flight && strcmp(m->m.done.turn, I.turn) == 0)) {
+        if (recording) {
+          I.rec = false;
+          end_press(); /* the mic stops; no voice.end */
+        }
         I.in_flight = false;
         I.stop_sent = false;
         if (m->m.done.outcome == GP_OUTCOME_FAILED) {
@@ -316,6 +325,7 @@ bool interaction_on_msg(const gp_msg_t *m) {
         I.reply_until = g_core.now + GADGET_REPLY_IDLE_MS;
       }
       break;
+    }
     default:
       return false;
   }

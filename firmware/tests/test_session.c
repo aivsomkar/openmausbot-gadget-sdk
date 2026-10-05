@@ -381,6 +381,39 @@ static void test_host_auto_unsupported_prints_empty_hosts_and_waits(void) {
   TEST_ASSERT_NULL(fake_omb("hosts")); /* halted: waits for host <address> */
 }
 
+/* Only a browse that worked and found none or several is a miss. A browse that
+ * failed, or ended because Wi-Fi dropped, is tried again. */
+static void test_host_auto_tries_again_after_a_failed_browse_or_a_wifi_drop(void) {
+  fake_storage_put(GADGET_KEY_WIFI_SSID, "Home");
+  fake_storage_put(GADGET_KEY_PAIR_CODE, "123456");
+  fake_boot("lcd-154");
+  TEST_ASSERT_EQUAL_INT(1, fake_mdns_browses());
+  fake_console_clear();
+  fake_wifi_set(GADGET_WIFI_CONNECTING); /* Wi-Fi drops while browsing ... */
+  fake_mdns_result(NULL, 0);             /* ... and the browse ends with nothing */
+  TEST_ASSERT_NULL(fake_omb("hosts"));
+  TEST_ASSERT_NOT_EQUAL_INT(UI_SETUP_HOST_NOT_FOUND, core_ui_model()->setup.step);
+  fake_run(30000);
+  TEST_ASSERT_EQUAL_INT(1, fake_mdns_browses()); /* waits for Wi-Fi */
+  fake_wifi_set(GADGET_WIFI_CONNECTED);
+  fake_run(10);
+  TEST_ASSERT_EQUAL_INT(2, fake_mdns_browses());
+  fake_mdns_fail(); /* browsing failed: retried after the backoff, not a miss */
+  TEST_ASSERT_NULL(fake_omb("hosts"));
+  TEST_ASSERT_NOT_EQUAL_INT(UI_SETUP_HOST_NOT_FOUND, core_ui_model()->setup.step);
+  fake_run(1900);
+  TEST_ASSERT_EQUAL_INT(2, fake_mdns_browses());
+  fake_run(200);
+  TEST_ASSERT_EQUAL_INT(3, fake_mdns_browses());
+  fake_mdns_result(NULL, 0); /* a browse that worked and found none: wait for host <address> */
+  cJSON *line = fake_omb("hosts");
+  TEST_ASSERT_NOT_NULL(line);
+  cJSON_Delete(line);
+  TEST_ASSERT_EQUAL_INT(UI_SETUP_HOST_NOT_FOUND, core_ui_model()->setup.step);
+  fake_run(30000);
+  TEST_ASSERT_EQUAL_INT(3, fake_mdns_browses());
+}
+
 static void test_wifi_drop_and_return(void) {
   fake_store_paired();
   fake_storage_put(GADGET_KEY_WIFI_SSID, "Home");
@@ -519,6 +552,7 @@ int main(void) {
   RUN_TEST(test_host_auto_picks_the_stored_host_id);
   RUN_TEST(test_host_auto_before_pairing);
   RUN_TEST(test_host_auto_unsupported_prints_empty_hosts_and_waits);
+  RUN_TEST(test_host_auto_tries_again_after_a_failed_browse_or_a_wifi_drop);
   RUN_TEST(test_wifi_drop_and_return);
   RUN_TEST(test_settings_update_bot_name_and_speak_pushes);
   RUN_TEST(test_names_are_cut_to_32_characters);

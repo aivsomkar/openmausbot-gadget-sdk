@@ -32,17 +32,19 @@ static void load_str(const char *key, char *buf, size_t cap) {
 
 /* ---- text ----------------------------------------------------------------------- */
 
-/* Replace code points outside Latin-1 + U+2026 + U+2192 (and invalid bytes)
- * with '?'. The result is never longer than the input. */
+/* Keep the gadget charset (contract §2.1, §2.8): U+0020..U+007E, U+00A0..U+00FF,
+ * U+2026, U+2192 and newline. Other control characters become spaces; DEL, the
+ * C1 controls, every other code point and invalid bytes become '?'. The result
+ * is never longer than the input. */
 static void fold_charset(char *s) {
   unsigned char *r = (unsigned char *)s, *w = (unsigned char *)s;
   while (*r) {
     unsigned char c = *r;
     if (c < 0x80) {
-      *w++ = (c < 0x20 && c != '\n') ? ' ' : c;
+      *w++ = (c < 0x20 && c != '\n') ? ' ' : (c == 0x7F ? '?' : c);
       r++;
-    } else if (c >= 0xC2 && c <= 0xC3 && (r[1] & 0xC0) == 0x80) {
-      *w++ = r[0]; /* U+0080..U+00FF */
+    } else if (((c == 0xC3) || (c == 0xC2 && r[1] >= 0xA0)) && (r[1] & 0xC0) == 0x80) {
+      *w++ = r[0]; /* U+00A0..U+00FF; the C1 controls U+0080..U+009F become '?' below */
       *w++ = r[1];
       r += 2;
     } else if (c == 0xE2 && r[1] == 0x80 && r[2] == 0xA6) {
@@ -121,8 +123,13 @@ void core_omb(cJSON *obj) {
 
 static gadget_status_t load_identity(void) {
   size_t len = 0;
-  bool have = hal_storage_get_blob(GADGET_KEY_DEV_KEY, g_core.priv, sizeof g_core.priv, &len) == GADGET_OK &&
-              len == GADGET_PRIVKEY_LEN && hal_crypto_pubkey(g_core.priv, g_core.pub) == GADGET_OK;
+  gadget_status_t rd = hal_storage_get_blob(GADGET_KEY_DEV_KEY, g_core.priv, sizeof g_core.priv, &len);
+  if (rd != GADGET_OK && rd != GADGET_ERR_NOT_FOUND && rd != GADGET_ERR_LIMIT) {
+    /* a read that failed is not a missing key: never overwrite the identity (spec §4.2) */
+    hal_log(GADGET_LOG_ERROR, CORE_TAG, "reading the device key failed: %d", (int)rd);
+    return rd;
+  }
+  bool have = rd == GADGET_OK && len == GADGET_PRIVKEY_LEN && hal_crypto_pubkey(g_core.priv, g_core.pub) == GADGET_OK;
   if (!have) {
     /* First boot (or an unusable key): the port started Wi-Fi, so the RNG is truly random. */
     gadget_status_t st = hal_crypto_keygen(g_core.priv, g_core.pub);

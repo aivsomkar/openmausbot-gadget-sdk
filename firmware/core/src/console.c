@@ -51,6 +51,11 @@ void gadget_linebuf_feed(gadget_linebuf_t *lb, const char *data, size_t n, gadge
 
 static bool is_space(char c) { return c == ' ' || c == '\t'; }
 
+/* Contract §2.11's esp_console_split_argv rules, with two corner cases of its
+ * own that both ports share: a quote inside a word groups as in a shell
+ * (x"y z" gives `xy z`; ESP-IDF keeps that quote literally), and an unknown
+ * escape keeps its backslash (a\qb stays `a\qb`; ESP-IDF drops the pair). P2d's
+ * installer therefore quotes whole arguments and escapes only \\ and \". */
 int gadget_console_split(char *line, char *argv[], int argv_max) {
   int argc = 0;
   char *r = line;
