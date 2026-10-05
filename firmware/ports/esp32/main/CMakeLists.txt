@@ -23,7 +23,9 @@ set(port_srcs
   hal_wifi.c
   hal_ws.c
   hal_mdns.c
-  hal_audio.c)
+  hal_audio.c
+  hal_input.c
+  hal_battery.c)
 
 set(logic_srcs
   logic/pl_event.c
@@ -32,7 +34,9 @@ set(logic_srcs
   logic/pl_wifi.c
   logic/pl_wsasm.c
   logic/pl_mdns.c
-  logic/pl_audio.c)
+  logic/pl_audio.c
+  logic/pl_input.c
+  logic/pl_power.c)
 
 set(port_include_dirs "." "logic" "drivers" "${board_dir}")
 
