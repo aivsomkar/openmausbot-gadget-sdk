@@ -55,3 +55,50 @@ jobs:
         run: cmake --build build/host -j4
       - name: Test
         run: ctest --test-dir build/host --output-on-failure --no-tests=error -L "unit|vectors|e2e"
+
+  ui:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+      - name: Root tools (the e2e label runs the fake host)
+        run: npm ci
+      - name: SDL2 for the simulator's window mode
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - name: Configure (GADGET_WITH_LVGL defaults to ON)
+        run: cmake -S firmware -B build/host -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build/host -j4
+      - name: Unit, vector, end-to-end and snapshot tests
+        run: ctest --test-dir build/host --output-on-failure -L "unit|vectors|e2e|snapshot"
+      - name: Upload snapshot differences
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: snapshot-diffs
+          path: firmware/tests/snapshots/**/*_err.png
+          if-no-files-found: ignore
+
+  art-drift:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+      - name: Regenerate the Maus art (linux-x64 is the reference)
+        working-directory: tools/art
+        run: npm ci && npm test && npm run art
+      - name: Committed art matches
+        run: test -z "$(git status --porcelain -- firmware/ui/art)"
+      - name: Art byte budget
+        working-directory: tools/art
+        run: npm run budget
+      - name: Upload the regenerated art
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: art-linux-x64
+          path: firmware/ui/art

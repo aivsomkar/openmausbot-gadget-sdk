@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+# Manual only: regenerate the Maus art and every snapshot golden on linux-x64,
+# the reference platform for the art-drift job. Download the artifact and
+# commit both folders unchanged (see firmware/ui/README.md).
+name: art-regen
+on:
+  workflow_dispatch:
+jobs:
+  regen:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+      - name: SDL2 for the simulator build
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - name: Regenerate the art
+        working-directory: tools/art
+        run: npm ci && npm run art && npm run budget
+      - name: Configure a snapshot-update build
+        run: cmake -S firmware -B build/snap -DGADGET_SNAPSHOT_UPDATE=ON
+      - name: Build
+        run: cmake --build build/snap -j4
+      - name: Rewrite every snapshot
+        run: ctest --test-dir build/snap --output-on-failure -L snapshot
+      - name: Upload art and snapshots
+        uses: actions/upload-artifact@v7
+        with:
+          name: art-and-snapshots-linux-x64
+          path: |
+            firmware/ui/art
+            firmware/tests/snapshots
