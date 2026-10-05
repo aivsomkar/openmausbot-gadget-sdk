@@ -147,6 +147,16 @@ void actions_deinit(void);
 bool actions_on_msg(const gp_msg_t *m);         /* act -> exactly one act.result */
 const gp_action_decl_t *actions_decls(uint8_t *count);   /* for hello */
 
+/* ---- ota.c ---------------------------------------------------------------------- */
+void ota_init(void);                            /* starts probation on a PENDING_VERIFY image */
+void ota_deinit(void);
+bool ota_on_msg(const gp_msg_t *m);             /* fw.offer, fw.commit */
+void ota_on_binary(uint8_t stream, const uint8_t *payload, size_t len);   /* firmware chunks */
+void ota_event(const gadget_event_t *ev);       /* GADGET_EV_OTA_WRITTEN / _ERROR */
+void ota_on_ready(void);                        /* probation: mark valid, send fw.installed */
+void ota_on_session_lost(void);
+void ota_tick(void);
+
 /* ---- console_cmd.c ------------------------------------------------------------- */
 void console_exec_line(const char *line);       /* NULL: an over-long line was dropped */
 void console_on_scan(const gadget_wifi_scan_ev_t *scan);

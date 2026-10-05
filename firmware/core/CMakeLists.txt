@@ -17,12 +17,18 @@ set(GADGET_CORE_SRCS
   src/audio.c
   src/display.c
   src/actions.c
+  src/ota.c
+  src/keys_release.c
+  src/keys_test.c
 )
 
 if(ESP_PLATFORM)
   idf_component_register(SRCS ${GADGET_CORE_SRCS}
                          INCLUDE_DIRS include
                          REQUIRES espressif__cjson mbedtls)
+  if(CONFIG_GADGET_TEST_KEYS)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE GADGET_TEST_KEYS=1)
+  endif()
   return()
 endif()
 
@@ -30,3 +36,6 @@ add_library(gadget_core STATIC ${GADGET_CORE_SRCS})
 target_include_directories(gadget_core PUBLIC include)
 target_link_libraries(gadget_core PUBLIC cjson gadget_mbedcrypto)
 gadget_warnings(gadget_core)
+if(GADGET_TEST_KEYS)
+  target_compile_definitions(gadget_core PRIVATE GADGET_TEST_KEYS=1)
+endif()
