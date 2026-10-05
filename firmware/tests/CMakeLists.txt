@@ -96,3 +96,17 @@ if(GADGET_BUILD_SIM AND GADGET_E2E)
     message(FATAL_ERROR "node >= 22.18 not found on PATH: install it or configure with -DGADGET_E2E=OFF")
   endif()
 endif()
+
+# ---- P2b: firmware/ui tests ------------------------------------------------
+if(GADGET_WITH_LVGL)
+  # gadget_ui_test(<area> [libs...]): test_ui_<area>.c -> CTest ui.<area>, label unit.
+  function(gadget_ui_test area)
+    add_executable(test_ui_${area} test_ui_${area}.c)
+    target_link_libraries(test_ui_${area} PRIVATE gadget_ui unity::framework ${ARGN})
+    target_compile_options(test_ui_${area} PRIVATE -Wall -Wextra -Werror)
+    add_test(NAME ui.${area} COMMAND test_ui_${area})
+    set_tests_properties(ui.${area} PROPERTIES LABELS unit TIMEOUT 120)
+  endfunction()
+  gadget_ui_test(lv_compat)
+  gadget_ui_test(art)
+endif()

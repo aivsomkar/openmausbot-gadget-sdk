@@ -30,6 +30,9 @@ include(cmake/warnings.cmake)
 include(cmake/deps.cmake)
 
 add_subdirectory(core)
+if(GADGET_WITH_LVGL)
+  add_subdirectory(ui)
+endif()
 
 if(GADGET_BUILD_SIM)
   add_subdirectory(ports/sim)
