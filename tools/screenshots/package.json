@@ -1,0 +1,13 @@
+{
+  "name": "openmausbot-gadget-screenshots",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "make": "node make.ts",
+    "typecheck": "../../site/node_modules/.bin/tsc -p tsconfig.json",
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "devDependencies": { "pngjs": "7.0.0" }
+}

@@ -27,7 +27,7 @@ async function findFiles(dir: string, name: string): Promise<string[]> {
 /** Every direct dependency the repository declares, by the identifier its build uses. */
 async function declaredDependencies(): Promise<Map<string, string>> {
   const deps = new Map<string, string>();
-  for (const pkg of ["package.json", "site/package.json", "tools/art/package.json"]) {
+  for (const pkg of ["package.json", "site/package.json", "tools/art/package.json", "tools/screenshots/package.json"]) {
     const text = await readIf(pkg);
     if (text === null) continue;
     const json = JSON.parse(text) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };

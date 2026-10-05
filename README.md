@@ -4,6 +4,18 @@ Turn a small ESP32-S3 board with a screen, a microphone and a speaker into a des
 
 This repository has the firmware for four boards, a desktop simulator that runs the same UI, a browser installer and the protocol. The host side ships inside MausBot itself: there is nothing else to run.
 
+## On the screen
+
+Real renders from the simulator, which runs the same firmware code as the boards.
+
+| Idle | Listening | Thinking | Speaking |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/images/screen-idle.png" width="200" alt="Idle: the green Maus under the battery arc, saying Hi, I'm Jev"> | <img src="docs/images/screen-listening.png" width="200" alt="Listening: a green ring around the Maus while you hold to talk"> | <img src="docs/images/screen-thinking.png" width="200" alt="Thinking: the question it heard, What's on my calendar today?, and the bot's status, checking your calendar"> | <img src="docs/images/screen-speaking.png" width="200" alt="Speaking: the reply, You have two meetings today: design review at 10 and lunch with Sam, read aloud"> |
+| **Approval** | **Push** | **Pairing** | **Update** |
+| <img src="docs/images/screen-ask.png" width="200" alt="An approval: Run shell command? ls -la ~/Documents, with Allow and Deny buttons"> | <img src="docs/images/screen-post.png" width="200" alt="A push from Jev over the idle screen: Morning brief is ready: 3 meetings, 2 reviews"> | <img src="docs/images/screen-setup.png" width="200" alt="Pairing: Pairing with Omkar's computer, with the gadget's id underneath"> | <img src="docs/images/screen-update.png" width="200" alt="Installing a firmware update: Updating... 50% with a progress bar"> |
+
+<img src="docs/images/boards.png" width="640" alt="The same idle screen on the round 1.75-inch AMOLED, the 1.54-inch square LCD and the 320×240 breadboard screen">
+
 ## Ask your MausBot to flash it
 
 The quickest way is to ask. Plug the board into your computer and tell your MausBot something like:
@@ -25,6 +37,8 @@ Open **https://aivsomkar.github.io/openmausbot-gadget-sdk/** in Chrome or Edge o
 2. Click **Connect and install** and choose the board's USB port. A normal install keeps the gadget's identity, Wi-Fi and pairing; **Erase everything** wipes them.
 3. Pick your Wi-Fi network from the list the gadget finds, and type its password.
 4. Open MausBot → Settings → Remote access → Pair a gadget and type the six-digit code.
+
+<img src="docs/images/installer.png" width="640" alt="The browser installer before the first release: the four boards to pick from, then the Install step">
 
 If MausBot runs on Windows and your network is set to Public, Windows' firewall blocks the gadget: set the network's profile type to Private in Windows Settings → Network & internet.
 

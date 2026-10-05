@@ -33,7 +33,7 @@ Espressif's and Waveshare's components are fetched at build time by the ESP-IDF 
 | noble-hashes | `@noble/hashes` | 2.4.0 | MIT | Dependency of `@noble/curves` |
 | ws | `ws` | 8.22.0 | MIT | Fake host |
 | resvg-js | `@resvg/resvg-js` | 2.6.2 | MPL-2.0 | Art generator (`tools/art`) |
-| pngjs | `pngjs` | 7.0.0 | MIT | Art generator |
+| pngjs | `pngjs` | 7.0.0 | MIT | Art generator and README screenshots (`tools/screenshots`) |
 | lv_font_conv | `lv_font_conv` | 1.5.3 | MIT | Font generator |
 | esbuild | `esbuild` | 0.28.2 | MIT | Installer build |
 | TypeScript | `typescript` | 5.9.3 | Apache-2.0 | Installer type check |
