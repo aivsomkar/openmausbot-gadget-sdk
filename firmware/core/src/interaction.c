@@ -93,6 +93,7 @@ static void clear_turn_model(void) {
 static void publish(void) {
   ui_model_t *m = &g_core.model;
   g_core.f.recording = I.rec;
+  g_core.f.mic_live = I.press != PRESS_NONE || I.rec;
   g_core.f.turn_active = I.in_flight && m->reply.text[0] == '\0' && !m->reply.failed;
   g_core.f.reply_visible = I.reply_shown;
   if (!I.rec) {
@@ -111,6 +112,7 @@ static void end_press(void) {
 }
 
 static void start_recording(void) {
+  audio_stop_local(); /* never record over playback */
   if (I.in_flight && !I.stop_sent) send_stop(I.turn); /* one turn in flight */
   I.in_flight = false;
   core_next_turn_id(I.rec_turn);
@@ -222,7 +224,9 @@ void interaction_deinit(void) {
 }
 
 void interaction_input(const gadget_input_t *in) {
-  if (display_ask_input(in)) {
+  /* A held press or a live recording keeps its input until it ends: Listening
+   * outranks Ask, and the ask only takes presses that began on it. */
+  if (I.press == PRESS_NONE && !I.rec && display_ask_input(in)) {
     publish();
     return;
   }
@@ -305,7 +309,8 @@ void interaction_tick(void) {
       g_core.model.listening.countdown_s = (uint8_t)((GADGET_UTTERANCE_MAX_MS - elapsed + 999u) / 1000u);
     }
   }
-  if (I.reply_shown && audio_active()) I.reply_until = now + GADGET_REPLY_IDLE_MS; /* 20 s after the speech ends */
+  /* 20 s after the reply's speech ends; a post's chime or speech does not count */
+  if (I.reply_shown && g_core.f.speaking) I.reply_until = now + GADGET_REPLY_IDLE_MS;
   if (I.reply_shown && !I.in_flight && I.reply_until != 0 && now >= I.reply_until) clear_turn_model();
   publish();
 }

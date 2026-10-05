@@ -133,7 +133,8 @@ static void answer(int idx) {
 }
 
 bool display_ask_input(const gadget_input_t *in) {
-  if (!g_core.f.ask_visible) return false;
+  /* only the ask on screen: never one hidden behind Listening or Update */
+  if (!g_core.f.ask_visible || g_core.model.screen != UI_SCREEN_ASK) return false;
   if (touch_board()) {
     switch (in->type) {
       case GADGET_IN_TOUCH_DOWN:

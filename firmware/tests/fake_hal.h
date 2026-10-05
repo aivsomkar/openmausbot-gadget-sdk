@@ -81,6 +81,7 @@ const char *fake_wifi_ssid(void);               /* last hal_wifi_connect ssid, "
 int fake_wifi_connects(void);
 int fake_wifi_scans(void);
 void fake_wifi_scan_result(const gadget_wifi_ap_t *aps, uint8_t count, bool ok);  /* deliver GADGET_EV_WIFI_SCAN */
+void fake_wifi_start_fails(bool on);             /* hal_wifi_connect and hal_wifi_scan return GADGET_ERR_IO */
 
 /* ---- WebSocket -------------------------------------------------------------- */
 int fake_ws_opens(void);                        /* hal_ws_open calls */

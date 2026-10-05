@@ -74,6 +74,41 @@ static void test_speech_plays_and_the_screen_follows(void) {
   TEST_ASSERT_EQUAL_INT(UI_SCREEN_IDLE, core_ui_model()->screen);
 }
 
+/* Contract §2.8: speak_elapsed_ms and speak_total_ms belong to the reply's
+ * speech stream. A post's chime and speech belong to no turn: they leave
+ * both alone and do not keep the reply up. */
+static void test_a_post_leaves_the_reply_speech_alone(void) {
+  fake_ready("amoled-175c");
+  start_turn();
+  host("{\"op\":\"reply\",\"turn\":\"%s\",\"text\":\"You have two meetings.\",\"final\":true}", g_turn);
+  host("{\"op\":\"speak.begin\",\"stream\":4,\"rate\":16000,\"turn\":\"%s\"}", g_turn);
+  speak(4, 25, 8000); /* 1 s */
+  fake_ws_in("{\"op\":\"speak.end\",\"stream\":4}");
+  host("{\"op\":\"done\",\"turn\":\"%s\",\"outcome\":\"ok\"}", g_turn);
+  for (int i = 0; i < 200 && core_ui_model()->screen == UI_SCREEN_SPEAKING; i++) fake_run(10);
+  uint64_t speech_ended = fake_now();
+  const ui_model_t *m = core_ui_model();
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_REPLY, m->screen);
+  TEST_ASSERT_EQUAL_size_t(16000, fake_spk_accepted());
+  TEST_ASSERT_EQUAL_UINT32(1000, m->reply.speak_total_ms);
+  TEST_ASSERT_EQUAL_UINT32(1000, m->reply.speak_elapsed_ms);
+  fake_run(5000);
+  fake_ws_in("{\"op\":\"post\",\"id\":\"p1\",\"bot\":{\"id\":\"b_jev\",\"name\":\"Jev\"},\"kind\":\"message\","
+             "\"text\":\"Your build passed\",\"speak\":true}");
+  fake_ws_in("{\"op\":\"speak.begin\",\"stream\":5,\"rate\":16000}"); /* no turn: the post's speech */
+  speak(5, 10, 8000);
+  fake_ws_in("{\"op\":\"speak.end\",\"stream\":5}");
+  fake_run(1000);
+  TEST_ASSERT_EQUAL_size_t(16000 + 4800 + 6400, fake_spk_accepted()); /* the chime and the post's speech played */
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_REPLY, m->screen);
+  TEST_ASSERT_EQUAL_UINT32(1000, m->reply.speak_total_ms);
+  TEST_ASSERT_EQUAL_UINT32(1000, m->reply.speak_elapsed_ms);
+  fake_run((uint32_t)(speech_ended + 19900 - fake_now()));
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_REPLY, core_ui_model()->screen);
+  fake_run(200);
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_IDLE, core_ui_model()->screen); /* 20 s after the reply's speech, not the post's */
+}
+
 static void test_speak_level_rises_at_once_and_falls_a_step_per_60_ms(void) {
   fake_ready("amoled-175c");
   start_turn();
@@ -261,6 +296,7 @@ int main(void) {
   if (psa_crypto_init() != PSA_SUCCESS) return 3;
   UNITY_BEGIN();
   RUN_TEST(test_speech_plays_and_the_screen_follows);
+  RUN_TEST(test_a_post_leaves_the_reply_speech_alone);
   RUN_TEST(test_speak_level_rises_at_once_and_falls_a_step_per_60_ms);
   RUN_TEST(test_tap_stops_speech_and_the_turn);
   RUN_TEST(test_tap_after_done_only_stops_playback);

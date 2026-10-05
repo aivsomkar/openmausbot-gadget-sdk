@@ -110,9 +110,18 @@ gadget_status_t gadget_action_register(const char *name, const char *description
   return GADGET_OK;
 }
 
+/* Exactly one act.result per act (contract §2.10): a result that cannot be
+ * encoded (over 16 KiB, or no memory) is sent as a failure instead, so the
+ * host gets a clear error rather than waiting out its timeout. */
 static void send_result(const char *id, bool ok, const cJSON *data, const char *error) {
   gp_act_result_t r = {.id = id, .ok = ok, .data = data, .error = error};
-  session_send("act.result", g_core_tx, gp_encode_act_result(g_core_tx, sizeof g_core_tx, &r));
+  int n = gp_encode_act_result(g_core_tx, sizeof g_core_tx, &r);
+  if (n < 0) {
+    hal_log(GADGET_LOG_WARN, TAG, "act.result %s not encoded (%d); sending a failure", id, n);
+    gp_act_result_t f = {.id = id, .ok = false, .error = n == GADGET_ERR_NO_MEM ? "out of memory" : "result too large"};
+    n = gp_encode_act_result(g_core_tx, sizeof g_core_tx, &f);
+  }
+  session_send("act.result", g_core_tx, n);
 }
 
 bool actions_on_msg(const gp_msg_t *m) {

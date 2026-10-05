@@ -160,6 +160,27 @@ static void test_scan_prints_one_line(void) {
   TEST_ASSERT_EQUAL_STRING("@omb {\"op\":\"scan\",\"networks\":[]}", last_line());
 }
 
+/* Contract §2.11: `scan` always ends in one `@omb scan` line, also when
+ * hal_wifi_scan() refuses to start, the same line a failed scan event gives. */
+static void test_a_scan_that_cannot_start_prints_no_networks(void) {
+  fake_boot("lcd-154");
+  fake_wifi_start_fails(true);
+  size_t n = fake_console_count();
+  fake_console_in("scan");
+  TEST_ASSERT_EQUAL_INT(1, fake_wifi_scans());
+  TEST_ASSERT_EQUAL_size_t(n + 1, fake_console_count());
+  TEST_ASSERT_EQUAL_STRING("@omb {\"op\":\"scan\",\"networks\":[]}", last_line());
+}
+
+/* Contract deviations, item 5: Wi-Fi that cannot start prints an error line. */
+static void test_wifi_that_cannot_start_prints_an_error(void) {
+  fake_boot("lcd-154");
+  fake_wifi_start_fails(true);
+  fake_console_in("wifi \"My Home\" \"pass word\"");
+  TEST_ASSERT_EQUAL_STRING("@omb {\"op\":\"error\",\"cmd\":\"wifi\",\"message\":\"could not start Wi-Fi\"}", last_line());
+  TEST_ASSERT_EQUAL_STRING("My Home", fake_storage_str(GADGET_KEY_WIFI_SSID)); /* kept for the next boot */
+}
+
 static void test_errors_are_reported(void) {
   fake_boot("lcd-154");
   fake_console_in("pair 12");
@@ -215,6 +236,8 @@ int main(void) {
   RUN_TEST(test_host_and_host_auto_drop_the_challenge_host_name);
   RUN_TEST(test_say_sends_a_typed_turn);
   RUN_TEST(test_scan_prints_one_line);
+  RUN_TEST(test_a_scan_that_cannot_start_prints_no_networks);
+  RUN_TEST(test_wifi_that_cannot_start_prints_an_error);
   RUN_TEST(test_errors_are_reported);
   RUN_TEST(test_log_off_and_on);
   RUN_TEST(test_forget_erases_everything_and_restarts);

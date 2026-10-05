@@ -42,6 +42,7 @@ typedef struct {
   /* Screen inputs: each module sets its own flags; screens.c reads them. */
   struct {
     bool recording;       /* interaction: a recording is live (Listening) */
+    bool mic_live;        /* interaction: the mic runs (a held press or a recording): never play */
     bool turn_active;     /* interaction: a turn is in flight and its reply is empty (Thinking) */
     bool speaking;        /* audio: the current turn's speech is playing (Speaking) */
     bool reply_visible;   /* interaction: reply text or a failed done to show (Reply) */
@@ -125,7 +126,7 @@ void audio_tick(void);
 void audio_stop_local(void);                    /* stop playback now (tap, barge-in, cancel) */
 bool audio_active(void);                        /* something is playing or buffered */
 bool audio_speech_active(void);                 /* host speech (not the chime) is playing */
-/* A 300 ms two-tone chime; false without a speaker, while recording or over speech. */
+/* A 300 ms two-tone chime; false without a speaker, while the mic is live or over speech. */
 bool audio_play_chime(void);
 
 /* ---- display.c ------------------------------------------------------------------ */

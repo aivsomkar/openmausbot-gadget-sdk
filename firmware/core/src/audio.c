@@ -47,6 +47,11 @@ static uint8_t level_of(const int16_t *pcm, size_t n) {
   return 3;
 }
 
+/* Playback of the current turn's speech: the reply's speech stream, whose
+ * speak_elapsed_ms and speak_total_ms the model shows (contract §2.8). A
+ * post's chime and speech belong to no turn and leave them alone. */
+static bool reply_speech(void) { return A.turn[0] != '\0' && strcmp(A.turn, interaction_turn()) == 0; }
+
 static void release(void) {
   free(A.ring);
   A.ring = NULL;
@@ -88,8 +93,10 @@ static bool begin_stream(uint8_t stream, uint32_t rate, const char *turn) {
   A.head = A.count = A.carry = 0;
   A.ended = A.playing = A.overflow_logged = false;
   A.received = A.written = 0;
-  g_core.model.reply.speak_elapsed_ms = 0;
-  g_core.model.reply.speak_total_ms = 0;
+  if (turn != NULL) {
+    g_core.model.reply.speak_elapsed_ms = 0;
+    g_core.model.reply.speak_total_ms = 0;
+  }
   return true;
 }
 
@@ -112,14 +119,14 @@ bool audio_on_msg(const gp_msg_t *m) {
       const gp_speak_begin_t *b = &m->m.speak_begin;
       const char *turn = b->turn;
       if (turn != NULL && strcmp(turn, interaction_turn()) != 0) break; /* speech for an old turn */
-      if (g_core.f.recording) break;                                     /* never play into the mic */
+      if (g_core.f.mic_live) break;                                      /* never play into the mic */
       begin_stream(b->stream, b->rate, turn);
       break;
     }
     case GP_OP_SPEAK_END:
       if (A.active && m->m.speak_end.stream == A.stream) {
         A.ended = true;
-        g_core.model.reply.speak_total_ms = (uint32_t)(A.received * 1000u / A.rate);
+        if (reply_speech()) g_core.model.reply.speak_total_ms = (uint32_t)(A.received * 1000u / A.rate);
       }
       break;
     case GP_OP_SPEAK_STOP:
@@ -179,7 +186,7 @@ void audio_tick(void) {
     feed();
     uint32_t buffered = hal_spk_buffered_ms();
     uint32_t written_ms = (uint32_t)(A.written * 1000u / A.rate);
-    m->reply.speak_elapsed_ms = written_ms > buffered ? written_ms - buffered : 0;
+    if (reply_speech()) m->reply.speak_elapsed_ms = written_ms > buffered ? written_ms - buffered : 0;
     if (A.ended && A.count == 0 && buffered == 0) release(); /* played out */
   }
   uint8_t target = A.active ? A.level : 0;
@@ -199,7 +206,7 @@ void audio_tick(void) {
     A.level_changed = now;
   }
   m->speak_level = A.level;
-  g_core.f.speaking = A.active && A.turn[0] != '\0' && strcmp(A.turn, interaction_turn()) == 0;
+  g_core.f.speaking = A.active && reply_speech();
 }
 
 bool audio_active(void) { return A.active; }
@@ -227,7 +234,7 @@ static int32_t sine(uint16_t phase) {
 
 bool audio_play_chime(void) {
   uint32_t rate = g_core.board->speaker_rate;
-  if (rate == 0 || g_core.f.recording) return false;
+  if (rate == 0 || g_core.f.mic_live) return false;
   if (A.active && A.stream != 0) return false; /* never over speech */
   if (!begin_stream(0, rate, NULL)) return false; /* stream 0: host streams are 1..255 */
   size_t n = (size_t)rate * CHIME_MS / 1000u, half = n / 2, fade = (size_t)rate * CHIME_FADE_MS / 1000u;

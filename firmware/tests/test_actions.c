@@ -1,6 +1,7 @@
 /* firmware/tests/test_actions.c */
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Action declarations, limits, act/act.result and events (core/src/actions.c). */
+#include <stdlib.h>
 #include <string.h>
 #include "fake_hal.h"
 #include "gadget_actions.h"
@@ -8,7 +9,10 @@
 #include "unity.h"
 
 void setUp(void) { fake_reset(); }
-void tearDown(void) { core_deinit(); }
+void tearDown(void) {
+  core_deinit();
+  cJSON_InitHooks(NULL); /* a failed out-of-memory check must not leave its allocator behind */
+}
 
 static int g_calls;
 static bool relay(const cJSON *args, cJSON *data, char *error, size_t cap) {
@@ -26,6 +30,36 @@ static bool counts_args(const cJSON *args, cJSON *data, char *error, size_t cap)
   (void)error;
   (void)cap;
   cJSON_AddNumberToObject(data, "n", cJSON_GetArraySize(args));
+  return true;
+}
+
+/* A handler whose data alone is larger than a 16 KiB text frame. */
+static bool too_big(const cJSON *args, cJSON *data, char *error, size_t cap) {
+  (void)args;
+  (void)error;
+  (void)cap;
+  static char text[17001];
+  memset(text, 'x', 17000);
+  text[17000] = '\0';
+  cJSON_AddStringToObject(data, "text", text);
+  return true;
+}
+
+/* cJSON's next allocation after the handler returns fails, once. */
+static bool s_fail_next_alloc;
+static void *fail_once_malloc(size_t n) {
+  if (s_fail_next_alloc) {
+    s_fail_next_alloc = false;
+    return NULL;
+  }
+  return malloc(n);
+}
+static bool runs_out_of_memory(const cJSON *args, cJSON *data, char *error, size_t cap) {
+  (void)args;
+  (void)error;
+  (void)cap;
+  cJSON_AddBoolToObject(data, "on", true);
+  s_fail_next_alloc = true;
   return true;
 }
 
@@ -173,6 +207,31 @@ static void test_act_runs_the_handler(void) {
   TEST_ASSERT_EQUAL_size_t(4, fake_ws_count("act.result")); /* exactly one per act */
 }
 
+/* Contract §2.10: exactly one act.result per act, even when the handler's
+ * result cannot be encoded. */
+static void test_an_oversized_result_still_answers(void) {
+  fake_ready("amoled-175c");
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, gadget_action_register("dump", "Dump a lot.", NULL, GADGET_RISK_SAFE, too_big));
+  fake_ws_in("{\"op\":\"act\",\"id\":\"b1\",\"name\":\"dump\"}");
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("act.result"));
+  TEST_ASSERT_EQUAL_STRING("{\"op\":\"act.result\",\"id\":\"b1\",\"ok\":false,\"error\":\"result too large\"}",
+                           fake_ws_text(fake_ws_sent() - 1));
+}
+
+static void test_a_result_without_memory_still_answers(void) {
+  fake_ready("amoled-175c");
+  TEST_ASSERT_EQUAL_INT(GADGET_OK, gadget_action_register("lamp", "Switch the lamp.", NULL, GADGET_RISK_SAFE,
+                                                          runs_out_of_memory));
+  cJSON_Hooks hooks = {.malloc_fn = fail_once_malloc, .free_fn = free};
+  cJSON_InitHooks(&hooks);
+  fake_ws_in("{\"op\":\"act\",\"id\":\"m1\",\"name\":\"lamp\"}");
+  cJSON_InitHooks(NULL);
+  TEST_ASSERT_FALSE(s_fail_next_alloc); /* the failure was spent on the result */
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("act.result"));
+  TEST_ASSERT_EQUAL_STRING("{\"op\":\"act.result\",\"id\":\"m1\",\"ok\":false,\"error\":\"out of memory\"}",
+                           fake_ws_text(fake_ws_sent() - 1));
+}
+
 static void test_act_chime_plays_and_returns_ok(void) {
   fake_ready("lcd-154");
   fake_ws_in("{\"op\":\"act\",\"id\":\"c1\",\"name\":\"chime\",\"args\":{}}");
@@ -237,6 +296,8 @@ int main(void) {
   RUN_TEST(test_the_hello_never_exceeds_16_kib);
   RUN_TEST(test_a_longer_name_still_fits_the_hello);
   RUN_TEST(test_act_runs_the_handler);
+  RUN_TEST(test_an_oversized_result_still_answers);
+  RUN_TEST(test_a_result_without_memory_still_answers);
   RUN_TEST(test_act_chime_plays_and_returns_ok);
   RUN_TEST(test_event_send_while_ready_and_busy_otherwise);
   RUN_TEST(test_event_send_checks_the_name_and_the_data_size);

@@ -43,6 +43,7 @@ static struct {
   gadget_wifi_state_t wifi;
   char wifi_ssid[33];
   int wifi_connects, wifi_scans;
+  bool wifi_start_fails;
   /* ws */
   int ws_opens;
   char ws_host[64];
@@ -420,6 +421,7 @@ gadget_status_t hal_wifi_connect(const char *ssid, const char *password) {
   (void)password;
   snprintf(F.wifi_ssid, sizeof F.wifi_ssid, "%s", ssid);
   F.wifi_connects++;
+  if (F.wifi_start_fails) return GADGET_ERR_IO;
   /* gadget_hal.h: CONNECTING (or CONNECTED) before this returns; the result
    * event comes from fake_wifi_set() */
   if (F.wifi != GADGET_WIFI_CONNECTED) F.wifi = GADGET_WIFI_CONNECTING;
@@ -431,8 +433,10 @@ gadget_wifi_state_t hal_wifi_state(void) { return F.wifi; }
 
 gadget_status_t hal_wifi_scan(void) {
   F.wifi_scans++;
-  return GADGET_OK;
+  return F.wifi_start_fails ? GADGET_ERR_IO : GADGET_OK;
 }
+
+void fake_wifi_start_fails(bool on) { F.wifi_start_fails = on; }
 
 void fake_wifi_set(gadget_wifi_state_t st) {
   F.wifi = st;

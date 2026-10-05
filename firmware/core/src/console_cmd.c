@@ -113,7 +113,9 @@ void console_exec_line(const char *text) {
       if (hal_wifi_connect(g_core.wifi_ssid, g_core.wifi_pass) != GADGET_OK) print_error("wifi", "could not start Wi-Fi");
       break;
     case GC_SCAN:
-      if (hal_wifi_scan() != GADGET_OK) print_error("scan", "scan failed");
+      /* one @omb scan line either way (contract §2.11): a scan that cannot start
+       * prints the same empty list as a scan that failed later */
+      if (hal_wifi_scan() != GADGET_OK) console_on_scan(&(gadget_wifi_scan_ev_t){.ok = false});
       break;
     case GC_HOST_AUTO:
       g_core.host_addr[0] = '\0';

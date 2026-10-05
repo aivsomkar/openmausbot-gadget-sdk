@@ -86,6 +86,79 @@ static void test_buttons_answer_on_a_button_board(void) {
   cJSON_Delete(ans);
 }
 
+/* Listening outranks Ask (contract §2.7): an ask that arrives while TALK or a
+ * touch is held stays hidden, and the press keeps its meaning until it ends. */
+static void ask_arrives_while_recording(const char *board, gadget_input_type_t down) {
+  fake_ready(board);
+  fake_input(down, 100, 100);
+  fake_mic_frames(25, 3000);
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.begin"));
+  fake_ws_in(PERMISSION);
+  fake_mic_frames(50, 3000);
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_LISTENING, core_ui_model()->screen);
+}
+
+static void test_an_ask_never_takes_a_held_talk_release(void) {
+  ask_arrives_while_recording("lcd-154", GADGET_IN_TALK_DOWN);
+  fake_input(GADGET_IN_TALK_UP, 0, 0);
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.end"));
+  TEST_ASSERT_FALSE(fake_mic_running());
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("answer"));
+  fake_run(10);
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_ASK, core_ui_model()->screen); /* now the person sees it */
+}
+
+static void test_cancel_while_recording_drops_it_and_never_answers(void) {
+  ask_arrives_while_recording("lcd-154", GADGET_IN_TALK_DOWN);
+  fake_input(GADGET_IN_CANCEL_DOWN, 0, 0);
+  fake_input(GADGET_IN_CANCEL_UP, 0, 0);
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.drop"));
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("answer"));
+  TEST_ASSERT_FALSE(fake_mic_running());
+  fake_input(GADGET_IN_TALK_UP, 0, 0); /* TALK let go after the cancel: no turn, no answer */
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("voice.end"));
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("answer"));
+}
+
+static void test_an_ask_never_takes_a_held_touch_release(void) {
+  ask_arrives_while_recording("amoled-175c", GADGET_IN_TOUCH_DOWN);
+  fake_input(GADGET_IN_TOUCH_UP, 100, 100);
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.end"));
+  TEST_ASSERT_FALSE(fake_mic_running());
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("answer"));
+}
+
+static void test_a_touch_lifted_before_300_ms_never_records_under_an_ask(void) {
+  fake_ready("amoled-175c");
+  fake_input(GADGET_IN_TOUCH_DOWN, 100, 100);
+  fake_run(100);
+  fake_ws_in(PERMISSION);
+  fake_input(GADGET_IN_TOUCH_UP, 100, 100);
+  fake_mic_frames(50, 3000);
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("voice.begin"));
+  TEST_ASSERT_FALSE(fake_mic_running());
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("answer"));
+}
+
+/* Spec §5.4: presses in the first 0.6 s after an ask appears are ignored. An
+ * ask that waited behind Listening appears when the recording ends. */
+static void test_an_ask_shown_after_listening_ignores_presses_for_0_6_s(void) {
+  ask_arrives_while_recording("lcd-154", GADGET_IN_TALK_DOWN);
+  fake_input(GADGET_IN_TALK_UP, 0, 0);
+  fake_run(100);
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_ASK, core_ui_model()->screen);
+  fake_input(GADGET_IN_TALK_DOWN, 0, 0); /* 0.1 s after it appeared: ignored */
+  fake_input(GADGET_IN_TALK_UP, 0, 0);
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("answer"));
+  TEST_ASSERT_FALSE(fake_mic_running());
+  fake_run(500);
+  fake_input(GADGET_IN_TALK_DOWN, 0, 0);
+  cJSON *ans = fake_ws_last("answer");
+  TEST_ASSERT_NOT_NULL(ans);
+  TEST_ASSERT_EQUAL_STRING("allow", cJSON_GetObjectItem(ans, "option")->valuestring);
+  cJSON_Delete(ans);
+}
+
 static void test_unanswerable_asks(void) {
   fake_ready("lcd-154");
   fake_ws_in("{\"op\":\"ask\",\"id\":\"a_3\",\"kind\":\"question\",\"title\":\"Pick\",\"body\":\"\",\"options\":["
@@ -298,6 +371,36 @@ static void test_no_chime_over_speech(void) {
   TEST_ASSERT_EQUAL_INT16(0, fake_spk_peak());                     /* and no chime was mixed in */
 }
 
+/* Never play into a live mic: neither in the 300 ms before a held press
+ * records (the mic already runs and pre-buffers) nor while it records. */
+static void spoken_post_while_talk_is_held(int mic_frames_before) {
+  fake_ready("lcd-154");
+  fake_input(GADGET_IN_TALK_DOWN, 0, 0);
+  fake_mic_frames(mic_frames_before, 3000);
+  fake_ws_in("{\"op\":\"post\",\"id\":\"p1\",\"bot\":{\"id\":\"b_jev\",\"name\":\"Jev\"},\"kind\":\"message\","
+             "\"text\":\"Your build passed\",\"speak\":true}");
+  fake_ws_in("{\"op\":\"speak.begin\",\"stream\":2,\"rate\":16000}"); /* no turn: the post's speech */
+  static uint8_t frame[2 + 1280];
+  frame[0] = 0x02;
+  frame[1] = 2;
+  for (int i = 0; i < 640; i++) frame[2 + 2 * i] = (uint8_t)(i % 2 ? 0x40 : 0xc0);
+  for (int i = 0; i < 25; i++) { /* 25 x 40 ms */
+    fake_ws_bin_in(frame, sizeof frame);
+    fake_mic_frames(2, 3000);
+  }
+  TEST_ASSERT_EQUAL_size_t(0, fake_spk_accepted());
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_LISTENING, core_ui_model()->screen);
+  TEST_ASSERT_TRUE(core_ui_model()->toast.visible); /* the post still shows */
+  fake_input(GADGET_IN_TALK_UP, 0, 0);
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.end"));
+}
+
+static void test_no_playback_into_a_live_mic(void) {
+  spoken_post_while_talk_is_held(5);  /* 100 ms: held, not recording yet */
+  fake_reset();
+  spoken_post_while_talk_is_held(25); /* 500 ms: recording */
+}
+
 static void test_battery_and_sense(void) {
   fake_battery_set(true, 82, false);
   fake_ready("amoled-175c");
@@ -336,6 +439,11 @@ int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_permission_ask_on_a_touch_board);
   RUN_TEST(test_buttons_answer_on_a_button_board);
+  RUN_TEST(test_an_ask_never_takes_a_held_talk_release);
+  RUN_TEST(test_cancel_while_recording_drops_it_and_never_answers);
+  RUN_TEST(test_an_ask_never_takes_a_held_touch_release);
+  RUN_TEST(test_a_touch_lifted_before_300_ms_never_records_under_an_ask);
+  RUN_TEST(test_an_ask_shown_after_listening_ignores_presses_for_0_6_s);
   RUN_TEST(test_unanswerable_asks);
   RUN_TEST(test_asks_queue_one_at_a_time);
   RUN_TEST(test_ask_expiry);
@@ -345,6 +453,7 @@ int main(void) {
   RUN_TEST(test_posts_toast_and_chime);
   RUN_TEST(test_spoken_post_chimes_then_speaks);
   RUN_TEST(test_no_chime_over_speech);
+  RUN_TEST(test_no_playback_into_a_live_mic);
   RUN_TEST(test_battery_and_sense);
   RUN_TEST(test_boards_without_a_battery_never_sense);
   return UNITY_END();

@@ -32,7 +32,14 @@ static ui_maus_state_t maus_for(ui_screen_t s, const ui_model_t *m) {
 
 void screens_update(void) {
   ui_model_t *m = &g_core.model;
+  ui_screen_t prev = m->screen;
   m->screen = pick_screen();
+  if (m->screen == UI_SCREEN_ASK && prev != UI_SCREEN_ASK) {
+    /* An ask that waited behind Listening or Update appears only now: presses
+     * in its first 0.6 s are ignored from here (spec §5.4). */
+    uint64_t lock = g_core.now + GADGET_ASK_LOCK_MS;
+    if (m->ask.locked_until_ms < lock) m->ask.locked_until_ms = lock;
+  }
   m->maus = maus_for(m->screen, m);
   if (g_core.f.toast_visible && m->maus != UI_MAUS_NONE) m->maus = UI_MAUS_NOTIFYING;
 }
