@@ -38,7 +38,10 @@ else()
   set_source_files_properties(${UI_SRCS} ${UI_ART_SRCS} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Wpedantic;-Werror")
   if(GADGET_SANITIZE)
     # PUBLIC: every test and gadget-sim linking gadget_ui runs sanitized too.
-    target_compile_options(gadget_ui PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
-    target_link_options(gadget_ui PUBLIC -fsanitize=address,undefined)
+    # -fno-sanitize-recover as in cmake/warnings.cmake: a UBSan finding aborts
+    # and fails its test instead of printing and passing.
+    target_compile_options(gadget_ui PUBLIC -fsanitize=address,undefined
+      -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(gadget_ui PUBLIC -fsanitize=address,undefined -fno-sanitize-recover=undefined)
   endif()
 endif()
