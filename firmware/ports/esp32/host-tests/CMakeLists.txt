@@ -30,6 +30,7 @@ set(PORT_LOGIC_SRCS
   ${ESP_DIR}/main/logic/pl_audio.c
   ${ESP_DIR}/main/logic/pl_input.c
   ${ESP_DIR}/main/logic/pl_power.c
+  ${ESP_DIR}/main/logic/pl_display.c
 )
 
 add_library(port_logic STATIC ${PORT_LOGIC_SRCS})
@@ -56,3 +57,4 @@ port_test(test_pl_mdns)
 port_test(test_pl_audio)
 port_test(test_pl_input)
 port_test(test_pl_power)
+port_test(test_pl_display)
