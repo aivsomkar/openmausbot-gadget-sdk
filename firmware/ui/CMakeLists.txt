@@ -9,6 +9,7 @@ if(ESP_PLATFORM AND CMAKE_BUILD_EARLY_EXPANSION)
   return()
 endif()
 set(UI_SRCS
+  ui_maus_engine.c ui_copy.c
   art/maus_art.c)
 file(GLOB UI_FONT_SRCS CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/fonts/*.c)
 

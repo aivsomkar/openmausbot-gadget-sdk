@@ -110,3 +110,8 @@ if(GADGET_WITH_LVGL)
   gadget_ui_test(lv_compat)
   gadget_ui_test(art)
 endif()
+
+if(GADGET_WITH_LVGL)
+  gadget_ui_test(copy)
+  gadget_ui_test(maus_engine)
+endif()
