@@ -119,3 +119,44 @@ endif()
 if(GADGET_WITH_LVGL)
   gadget_ui_test(screens)
 endif()
+
+# ---- P2b: simulator display, SDL window and SDL audio tests ---------------
+# Gated on the options, never on `TARGET`: gadget_sim_lvgl and gadget-sim come
+# from ports/sim (added only with GADGET_BUILD_SIM), and target names resolve at
+# generate time, so the order of add_subdirectory() calls does not matter.
+if(GADGET_WITH_LVGL AND GADGET_BUILD_SIM)
+  # gadget_sim_test(<area>): test_sim_<area>.c on SDL's dummy drivers -> CTest sim.<area>.
+  function(gadget_sim_test area)
+    add_executable(test_sim_${area} test_sim_${area}.c)
+    target_link_libraries(test_sim_${area} PRIVATE gadget_sim_lvgl unity::framework)
+    target_compile_definitions(test_sim_${area} PRIVATE _POSIX_C_SOURCE=200809L $<$<PLATFORM_ID:Darwin>:_DARWIN_C_SOURCE>)
+    target_compile_options(test_sim_${area} PRIVATE -Wall -Wextra -Werror)
+    add_test(NAME sim.${area} COMMAND test_sim_${area})
+    set_tests_properties(sim.${area} PROPERTIES LABELS unit TIMEOUT 60
+                         ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
+  endfunction()
+  gadget_sim_test(display)
+  if(GADGET_WITH_SDL)
+    gadget_sim_test(sdl)
+    gadget_sim_test(audio_sdl)
+    # No usable audio: SDL audio does not start (unknown driver), or it starts
+    # but neither device opens (the disk driver pointed at a missing folder).
+    add_test(NAME sim.audio_sdl.no_device COMMAND test_sim_audio_sdl)
+    set_tests_properties(sim.audio_sdl.no_device PROPERTIES LABELS unit TIMEOUT 60
+                         ENVIRONMENT "SDL_AUDIODRIVER=gadget-none;GADGET_TEST_NO_AUDIO=1")
+    set(_no_dir ${CMAKE_CURRENT_BINARY_DIR}/no-such-dir)
+    add_test(NAME sim.audio_sdl.open_fails COMMAND test_sim_audio_sdl)
+    set_tests_properties(sim.audio_sdl.open_fails PROPERTIES LABELS unit TIMEOUT 60
+                         ENVIRONMENT "SDL_AUDIODRIVER=disk;SDL_DISKAUDIOFILE=${_no_dir}/out.raw;SDL_DISKAUDIOFILEIN=${_no_dir}/in.raw;GADGET_TEST_NO_AUDIO=1")
+    # The whole simulator in window mode on SDL's dummy drivers, from a fresh state folder.
+    set(_win_state ${CMAKE_BINARY_DIR}/snap-state/window-smoke)
+    add_test(NAME sim.window_smoke.fresh
+             COMMAND ${CMAKE_COMMAND} -DDIR=${_win_state} -P ${CMAKE_CURRENT_SOURCE_DIR}/fresh_dir.cmake)
+    set_tests_properties(sim.window_smoke.fresh PROPERTIES FIXTURES_SETUP sim.window_smoke.state LABELS unit)
+    add_test(NAME sim.window_smoke
+             COMMAND $<TARGET_FILE:gadget-sim> --board amoled-175c --host script --state-dir ${_win_state}
+                     --script ${CMAKE_CURRENT_SOURCE_DIR}/scripts/window_smoke.txt)
+    set_tests_properties(sim.window_smoke PROPERTIES FIXTURES_REQUIRED sim.window_smoke.state LABELS unit TIMEOUT 60
+                         ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
+  endif()
+endif()

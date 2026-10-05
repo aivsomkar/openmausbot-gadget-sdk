@@ -11,7 +11,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 # P2b adds firmware/ui and the LVGL/SDL simulator display behind this option
 # (and flips its default to ON); until then it changes nothing.
-option(GADGET_WITH_LVGL "Build the LVGL UI and the LVGL/SDL simulator display (plan P2b)" OFF)
+option(GADGET_WITH_LVGL "Build the LVGL UI and the LVGL/SDL simulator display (plan P2b)" ON)
 option(GADGET_BUILD_SIM "Build the gadget-sim simulator" ON)
 option(GADGET_BUILD_TESTS "Build the C tests" ON)
 option(GADGET_E2E "Register the simulator <-> fake-host e2e tests (needs node >= 22.18 and npm ci)" ON)

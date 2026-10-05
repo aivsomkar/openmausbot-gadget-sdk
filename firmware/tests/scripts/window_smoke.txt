@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# Window mode on SDL's dummy drivers (CTest sim.window_smoke): the SDL window,
+# the event filter and the SDL audio backend start and shut down cleanly.
+model screen setup 5000
+wait 300
+console status
+wait 300
