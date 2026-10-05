@@ -201,7 +201,9 @@ static void test_log_off_and_on(void) {
   fake_console_in("log off");
   TEST_ASSERT_FALSE(fake_log_enabled());
   fake_console_in("status"); /* @omb lines still print */
-  TEST_ASSERT_NOT_NULL(fake_omb("status"));
+  cJSON *st = fake_omb("status");
+  TEST_ASSERT_NOT_NULL(st);
+  cJSON_Delete(st);
   fake_console_in("log on");
   TEST_ASSERT_TRUE(fake_log_enabled());
 }

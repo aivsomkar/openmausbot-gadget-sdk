@@ -115,7 +115,8 @@ static void test_sha256sums_cover_the_exact_bytes(void) {
 static void test_identity(void) {
   cJSON *root;
   const cJSON *c;
-  cJSON_ArrayForEach(c, load_cases("identity", &root)) {
+  const cJSON *cases = load_cases("identity", &root);
+  cJSON_ArrayForEach(c, cases) {
     uint8_t priv[32], pub[65];
     unhex(s(c, "private_key_hex"), priv, sizeof priv);
     TEST_ASSERT_EQUAL_INT(GADGET_OK, hal_crypto_pubkey(priv, pub));
@@ -137,7 +138,8 @@ static void test_identity(void) {
 static void test_rfc6979(void) {
   cJSON *root;
   const cJSON *c;
-  cJSON_ArrayForEach(c, load_cases("rfc6979", &root)) {
+  const cJSON *cases = load_cases("rfc6979", &root);
+  cJSON_ArrayForEach(c, cases) {
     sign_and_compare(s(c, "private_key_hex"), s(c, "message_utf8"), s(c, "der_hex"));
     uint8_t der[80], raw[64], want_raw[64];
     size_t n = unhex(s(c, "der_hex"), der, sizeof der);
@@ -157,7 +159,8 @@ static void test_rfc6979(void) {
 static void test_prove(void) {
   cJSON *root;
   const cJSON *c;
-  cJSON_ArrayForEach(c, load_cases("prove", &root)) {
+  const cJSON *cases = load_cases("prove", &root);
+  cJSON_ArrayForEach(c, cases) {
     const char *name = s(c, "name"), *expect = s(c, "expect");
     char text[512];
     gp_prove_text(text, sizeof text, s(c, "id"), s(c, "nonce_b64"), s(c, "host_id"));
@@ -209,7 +212,8 @@ static void test_prove(void) {
 static void test_der(void) {
   cJSON *root;
   const cJSON *c;
-  cJSON_ArrayForEach(c, load_cases("der", &root)) {
+  const cJSON *cases = load_cases("der", &root);
+  cJSON_ArrayForEach(c, cases) {
     uint8_t der[96], raw[64];
     size_t n = unhex(s(c, "der_hex"), der, sizeof der);
     if (!b(c, "valid")) {
@@ -235,7 +239,8 @@ static void test_der(void) {
 static void test_base64(void) {
   cJSON *root;
   const cJSON *c;
-  cJSON_ArrayForEach(c, load_cases("base64", &root)) {
+  const cJSON *cases = load_cases("base64", &root);
+  cJSON_ArrayForEach(c, cases) {
     uint8_t buf[128];
     size_t n = 0;
     gadget_status_t st = gadget_b64_decode(s(c, "input"), buf, sizeof buf, &n);
@@ -256,7 +261,8 @@ static void test_base64(void) {
 static void test_firmware(void) {
   cJSON *root;
   const cJSON *c;
-  cJSON_ArrayForEach(c, load_cases("firmware", &root)) {
+  const cJSON *cases = load_cases("firmware", &root);
+  cJSON_ArrayForEach(c, cases) {
     const char *name = s(c, "name"), *expect = s(c, "expect");
     char text[512];
     gp_firmware_text(text, sizeof text, s(c, "gadget_board"), s(c, "version"), u(c, "size"), s(c, "sha256"));
@@ -281,7 +287,8 @@ static void test_firmware(void) {
 static void test_frames(void) {
   cJSON *root;
   const cJSON *c;
-  cJSON_ArrayForEach(c, load_cases("frames", &root)) {
+  const cJSON *cases = load_cases("frames", &root);
+  cJSON_ArrayForEach(c, cases) {
     const char *name = s(c, "name");
     static uint8_t frame[GADGET_BINARY_FRAME_MAX + 16];
     size_t n = unhex(s(c, "frame_hex"), frame, sizeof frame);
