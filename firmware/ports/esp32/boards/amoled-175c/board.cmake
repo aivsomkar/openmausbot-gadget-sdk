@@ -1,3 +1,3 @@
 # SPDX-License-Identifier: Apache-2.0
-# Drivers from main/drivers/ that this board's board.c uses (none yet).
-set(BOARD_DRIVER_SRCS)
+# Drivers from main/drivers/ that boards/amoled-175c/board.c uses.
+set(BOARD_DRIVER_SRCS drv_es_codec.c)

@@ -27,6 +27,7 @@ set(PORT_LOGIC_SRCS
   ${ESP_DIR}/main/logic/pl_wifi.c
   ${ESP_DIR}/main/logic/pl_wsasm.c
   ${ESP_DIR}/main/logic/pl_mdns.c
+  ${ESP_DIR}/main/logic/pl_audio.c
 )
 
 add_library(port_logic STATIC ${PORT_LOGIC_SRCS})
@@ -50,3 +51,4 @@ port_test(test_pl_scan)
 port_test(test_pl_wifi)
 port_test(test_pl_wsasm)
 port_test(test_pl_mdns)
+port_test(test_pl_audio)

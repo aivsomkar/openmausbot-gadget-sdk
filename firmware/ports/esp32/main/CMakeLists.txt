@@ -22,7 +22,8 @@ set(port_srcs
   hal_storage.c
   hal_wifi.c
   hal_ws.c
-  hal_mdns.c)
+  hal_mdns.c
+  hal_audio.c)
 
 set(logic_srcs
   logic/pl_event.c
@@ -30,9 +31,10 @@ set(logic_srcs
   logic/pl_scan.c
   logic/pl_wifi.c
   logic/pl_wsasm.c
-  logic/pl_mdns.c)
+  logic/pl_mdns.c
+  logic/pl_audio.c)
 
-set(port_include_dirs "." "logic" "${board_dir}")
+set(port_include_dirs "." "logic" "drivers" "${board_dir}")
 
 idf_component_register(
   SRCS ${port_srcs} ${logic_srcs} ${BOARD_DRIVER_SRCS}
