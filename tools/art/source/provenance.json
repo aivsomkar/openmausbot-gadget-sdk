@@ -1,0 +1,11 @@
+{
+ "app_repo": "https://github.com/milind-soni/OpenMausBot",
+ "commit": "6dd4403d8fbbbd5c17169724cb2a529f11d7543e",
+ "license": "Apache-2.0",
+ "files": {
+  "src/components/cursor-face-data.ts": "a02e38a7e2127ad60ed47cf3571b2b0261271e8b6dbd738cf32f7d726c872c3a",
+  "shared/mascot-bodies.ts": "995293ac234033c3947482b2e8ab6bee925bcc75a3b4cec14082d2a90b75616c",
+  "android/app/src/main/kotlin/com/openmausbot/companion/ui/MausBodies.kt": "6e00ae7c87b18fb34322e9881d933d32a94d1054954fc6766ad24dd5112b99bc",
+  "src/components/CursorAvatar.tsx": "676101a96c2b0b6109a6c4d92a4ccf67ec9efdcc9c87c03dccb08553ad7aff35"
+ }
+}

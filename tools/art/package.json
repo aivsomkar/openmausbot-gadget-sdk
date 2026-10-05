@@ -1,0 +1,21 @@
+{
+  "name": "openmausbot-gadget-art",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "extract": "node extract.ts",
+    "art": "node build.ts",
+    "fonts": "node fonts.ts",
+    "budget": "node budget.ts",
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "lv_font_conv": "1.5.3",
+    "pngjs": "7.0.0"
+  }
+}

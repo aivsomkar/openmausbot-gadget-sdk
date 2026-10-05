@@ -1,0 +1,6 @@
+{
+ "body_gradient": [["#8cd1b3", 0], ["#009957", 0.55], ["#005932", 1]],
+ "face": "#ffffff",
+ "speak_interior": "#005932",
+ "eye_format": "A8"
+}

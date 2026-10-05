@@ -1,0 +1,225 @@
+{
+ "states": {
+  "idle": {
+   "pool": [
+    6,
+    0,
+    8
+   ],
+   "cadence": [
+    9000,
+    16000
+   ],
+   "blink": [
+    6000,
+    14000
+   ],
+   "motion": {
+    "pulse": [
+     0.014,
+     3600
+    ]
+   },
+   "source": "src/components/CursorAvatar.tsx"
+  },
+  "listening": {
+   "pool": [
+    1,
+    10,
+    19
+   ],
+   "cadence": [
+    2800,
+    5000
+   ],
+   "blink": [
+    3000,
+    7000
+   ],
+   "motion": {
+    "bob": [
+     2,
+     2600
+    ],
+    "pulse": [
+     0.012,
+     2600
+    ]
+   },
+   "source": "src/components/CursorAvatar.tsx"
+  },
+  "thinking": {
+   "pool": [
+    17,
+    8,
+    16,
+    14,
+    5
+   ],
+   "cadence": [
+    2000,
+    3600
+   ],
+   "blink": [
+    3500,
+    7000
+   ],
+   "motion": {
+    "sway": [
+     1.6,
+     3000
+    ],
+    "pulse": [
+     0.01,
+     3000
+    ]
+   },
+   "source": "src/components/CursorAvatar.tsx"
+  },
+  "working": {
+   "pool": [
+    10,
+    7,
+    16,
+    11
+   ],
+   "cadence": [
+    1800,
+    3200
+   ],
+   "blink": [
+    2800,
+    5500
+   ],
+   "motion": {
+    "bob": [
+     2.5,
+     900
+    ],
+    "squash": 0.22
+   },
+   "source": "src/components/CursorAvatar.tsx"
+  },
+  "sleeping": {
+   "pool": [
+    22,
+    13,
+    4
+   ],
+   "cadence": [
+    6000,
+    10000
+   ],
+   "blink": null,
+   "motion": {
+    "pulse": [
+     0.028,
+     4600
+    ],
+    "tilt": 2
+   },
+   "source": "src/components/CursorAvatar.tsx"
+  },
+  "curious": {
+   "pool": [
+    21,
+    3,
+    0,
+    15
+   ],
+   "cadence": [
+    1800,
+    3200
+   ],
+   "blink": [
+    2500,
+    5500
+   ],
+   "motion": {
+    "sway": [
+     3.4,
+     1900
+    ],
+    "tilt": -4
+   },
+   "source": "src/components/CursorAvatar.tsx"
+  },
+  "notifying": {
+   "pool": [
+    21,
+    3,
+    0
+   ],
+   "cadence": [
+    1500,
+    2600
+   ],
+   "blink": [
+    2000,
+    4000
+   ],
+   "motion": {
+    "bob": [
+     4,
+     700
+    ],
+    "sway": [
+     2.5,
+     700
+    ]
+   },
+   "source": "src/components/CursorAvatar.tsx"
+  },
+  "alerting": {
+   "pool": [
+    21,
+    3
+   ],
+   "cadence": [
+    2000,
+    3600
+   ],
+   "blink": null,
+   "motion": {
+    "jitter": [
+     2.6,
+     85
+    ]
+   },
+   "source": "src/components/CursorAvatar.tsx"
+  },
+  "speaking": {
+   "pool": [
+    19,
+    6
+   ],
+   "cadence": [
+    3000,
+    6000
+   ],
+   "blink": [
+    2500,
+    5000
+   ],
+   "motion": {
+    "bob": [
+     1.5,
+     1800
+    ]
+   },
+   "source": "gadget-only (original to this SDK)"
+  }
+ },
+ "speak": {
+  "expressions": [
+   19,
+   6
+  ],
+  "open": [
+   6,
+   11,
+   16
+  ],
+  "widen": 1.5
+ }
+}
