@@ -1,0 +1,34 @@
+# A permission ask answered on the touch screen, then a card, a post and an action.
+net_open
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Fake MausBot"}
+expect prove
+net_text {"op":"ready","session":"s_0123456789ab","bot":{"id":"b_fake","name":"Fake Bot"}}
+net_text {"op":"ask","id":"a_1","kind":"permission","title":"Run a shell command?","body":"ls -la","options":[{"id":"allow","label":"Allow","style":"allow"},{"id":"deny","label":"Deny","style":"deny"}]}
+model screen ask
+model ask.n_options 2
+model ask.answerable true
+wait 700
+# Allow sits at x 76..227, y 337..388 on the 466 px round screen (ui_layout_ask)
+touch 152 363
+release
+expect answer
+net_text {"op":"ask.close","id":"a_1","reason":"answered"}
+model screen idle
+net_text {"op":"card","id":"c1","title":"Build passed","body":"main is green","ttl_s":2}
+model screen card
+model card.title Build passed
+model screen idle 3000
+net_text {"op":"post","id":"p1","bot":{"id":"b_fake","name":"Fake Bot"},"kind":"routine","text":"Morning brief is ready","speak":false}
+model toast.visible true
+model maus notifying
+model toast.text ~Morning brief
+net_text {"op":"act","id":"x1","name":"chime","args":{}}
+expect act.result
+net_text {"op":"image.begin","id":"i1","stream":9,"w":2,"h":1,"ttl_s":0}
+net_binary 0309001f00f8
+net_text {"op":"image.end","stream":9}
+model screen image
+model image.w 2
+swipe down
+model screen idle

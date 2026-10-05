@@ -1,0 +1,25 @@
+# A new gadget enrolls with the code given on the command line (--pair).
+model screen setup
+model maus curious
+model setup.step pairing
+net_open
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Fake MausBot"}
+expect prove
+model host_name Fake MausBot
+net_text {"op":"ready","session":"s_0123456789ab","bot":{"id":"b_fake","name":"Fake Bot"},"settings":{"speak_pushes":false}}
+model pair paired
+model screen idle
+model maus idle
+model bot_name Fake Bot
+# a dropped session: offline, then back after the 2 s backoff
+net_close 1006
+model screen offline
+model offline.reason host_unreachable
+net_open 3000
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Fake MausBot"}
+expect prove
+net_text {"op":"ready","session":"s_0123456789ac","bot":{"id":"b_fake","name":"Fake Bot"}}
+model screen idle
+console status

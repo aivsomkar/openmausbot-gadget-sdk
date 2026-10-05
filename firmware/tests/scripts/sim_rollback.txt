@@ -1,0 +1,21 @@
+# --fail-probation: the new image ignores its first ready, the 2 s probation
+# runs out, and the simulator restarts into the old image (fw 0.0.0-dev).
+net_open
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Fake MausBot"}
+expect prove
+net_text {"op":"ready","session":"s_0123456789ab","bot":{"id":"b_fake","name":"Fake Bot"}}
+net_text {"op":"fw.offer","stream":1,"board":"amoled-175c","version":"1.1.0","size":16,"sha256":"be45cb2605bf36bebde684841a28f0fd43c69850a3dce5fedba69928ee3a8991","sig":"MEUCIQDxbmBHJquaXcyreOXXR1v0Vxex/M4PR1/5cwZ3Gn6KqQIgOr9ONFDyaZnyb1f0SZF9FsK5Esvf0ruII1T8obpPBw8=","key_id":"t1"}
+expect fw.ready
+net_binary 040100000000000102030405060708090a0b0c0d0e0f
+expect fw.progress
+net_text {"op":"fw.commit","stream":1}
+boot 1 5000
+net_open
+expect hello
+net_text {"op":"challenge","nonce":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=","host_id":"000102030405060708090a0b0c0d0e0f","host_name":"Fake MausBot"}
+expect prove
+net_text {"op":"ready","session":"s_0123456789ad","bot":{"id":"b_fake","name":"Fake Bot"}}
+boot 2 10000
+console status
+wait 100

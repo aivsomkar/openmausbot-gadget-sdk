@@ -40,3 +40,25 @@ target_link_libraries(test_vectors PRIVATE gadget_core unity::framework)
 gadget_warnings(test_vectors)
 add_test(NAME vectors.c COMMAND test_vectors ${GADGET_VECTORS_DIR})
 set_tests_properties(vectors.c PROPERTIES LABELS vectors TIMEOUT 60)
+
+# Headless simulator scripts on the scripted network (label unit).
+if(GADGET_BUILD_SIM)
+  function(gadget_sim_script name board)
+    cmake_parse_arguments(S "" "EXPECT;ARGS" "" ${ARGN})
+    add_test(NAME sim.${name}
+             COMMAND ${CMAKE_COMMAND} -DSIM=$<TARGET_FILE:gadget-sim> -DBOARD=${board}
+                     -DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/scripts/sim_${name}.txt
+                     -DSTATE=${CMAKE_CURRENT_BINARY_DIR}/sim-state/${name}
+                     "-DARGS=${S_ARGS}" "-DEXPECT=${S_EXPECT}"
+                     -P ${CMAKE_CURRENT_SOURCE_DIR}/run_sim_script.cmake)
+    set_tests_properties(sim.${name} PROPERTIES LABELS unit TIMEOUT 150)
+  endfunction()
+
+  gadget_sim_script(handshake amoled-175c ARGS "--pair 123456" EXPECT "\"pair\":\"paired\"")
+  gadget_sim_script(voice lcd-154 ARGS "--pair 123456")
+  gadget_sim_script(ask amoled-175c ARGS "--pair 123456")
+  gadget_sim_script(ota amoled-175c ARGS "--pair 123456" EXPECT "\"fw\":\"1\\.1\\.0\"")
+  gadget_sim_script(rollback amoled-175c ARGS "--pair 123456 --fail-probation --probation-ms 2000"
+                    EXPECT "\"fw\":\"0\\.0\\.0-dev\"")
+  gadget_sim_script(reboot_rollback amoled-175c ARGS "--pair 123456" EXPECT "\"fw\":\"0\\.0\\.0-dev\"")
+endif()
