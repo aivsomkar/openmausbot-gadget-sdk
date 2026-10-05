@@ -1,0 +1,142 @@
+# SPDX-License-Identifier: Apache-2.0
+# Builds every board for a v* tag, signs the app images with the release key
+# in the protected `release` environment, publishes the release and refreshes
+# the installer site (spec §8, contract §4.1–§4.3).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (${{ matrix.board }})
+    runs-on: ubuntu-24.04
+    container: espressif/idf:v6.0.3
+    strategy:
+      fail-fast: true
+      matrix:
+        board: [amoled-175c, amoled-175, lcd-154, devkit]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Version from the tag
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::tag $GITHUB_REF_NAME is not v<major>.<minor>.<patch>[-<pre>]"; exit 1
+          fi
+          if [[ "$VERSION" == *-dev ]]; then
+            echo "::error::release versions never end in -dev"; exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Build ${{ matrix.board }}
+        env:
+          BOARD: ${{ matrix.board }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          . "$IDF_PATH/export.sh"
+          cd firmware/ports/esp32
+          ARGS=(-B "build/$BOARD" -D GADGET_BOARD="$BOARD" -D SDKCONFIG="build/$BOARD/sdkconfig" -D PROJECT_VER="$VERSION")
+          idf.py "${ARGS[@]}" build
+          idf.py "${ARGS[@]}" merge-bin -o merged.bin
+          tools/check-size.sh "$BOARD"
+          tools/check-art-profile.sh "$BOARD"
+          # A release is a standard build: no test keys, no NVS encryption (tools/build-all.sh).
+          grep -qxF '# CONFIG_GADGET_TEST_KEYS is not set' "build/$BOARD/sdkconfig"
+          grep -qxF '# CONFIG_GADGET_NVS_ENCRYPT is not set' "build/$BOARD/sdkconfig"
+      - name: Stage the build outputs
+        env:
+          BOARD: ${{ matrix.board }}
+        run: |
+          set -euo pipefail
+          S="firmware/ports/esp32/build/$BOARD"
+          D="raw/$BOARD"
+          mkdir -p "$D/bootloader" "$D/partition_table"
+          cp "$S/openmausbot-gadget.bin" "$S/ota_data_initial.bin" "$S/merged.bin" "$S/flasher_args.json" "$S/sdkconfig" "$D/"
+          cp "$S/bootloader/bootloader.bin" "$D/bootloader/"
+          cp "$S/partition_table/partition-table.bin" "$D/partition_table/"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: raw-${{ matrix.board }}
+          path: raw/
+          if-no-files-found: error
+
+  assemble:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+      - name: Release tool tests
+        run: node --test "tools/release/test/*.test.ts"
+      - name: Release key table holds only r* keys
+        run: node tools/release/check-keys.ts
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: raw-*
+          path: raw
+          merge-multiple: true
+      - name: Check and collect every board
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          for BOARD in amoled-175c amoled-175 lcd-154 devkit; do
+            node tools/release/collect.ts --board "$BOARD" --version "$VERSION" --build "raw/$BOARD" \
+              --assets out/assets --meta out/meta --keys keys
+          done
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: unsigned
+          path: out/
+          if-no-files-found: error
+
+  release:
+    needs: assemble
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: unsigned
+          path: out
+      - name: Sign, and write manifest.json, install.json and SHA256SUMS
+        env:
+          GADGET_RELEASE_KEY_R1: ${{ secrets.GADGET_RELEASE_KEY_R1 }}
+        run: >-
+          node tools/release/sign.ts --assets out/assets --meta out/meta
+          --tag "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+          --key-id r1 --key-env GADGET_RELEASE_KEY_R1 --pub keys/release-r1.pub.b64
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          FLAGS=(--repo "$GITHUB_REPOSITORY" --verify-tag --title "OpenMausBot Gadget $GITHUB_REF_NAME" --generate-notes)
+          # Tags with a "-" are prereleases, so they never become "latest" (spec §8).
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then FLAGS+=(--prerelease --latest=false); fi
+          gh release create "$GITHUB_REF_NAME" out/assets/* "${FLAGS[@]}"
+      - name: Refresh the installer site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main

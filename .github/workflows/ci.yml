@@ -207,3 +207,22 @@ jobs:
           rm -f dependencies.lock.amoled-175c
           idf.py -B build/amoled-175c -D GADGET_BOARD=amoled-175c -D SDKCONFIG=build/amoled-175c/sdkconfig build
           tools/check-size.sh amoled-175c
+
+  site:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Installer tests and build
+        working-directory: site
+        run: npm ci && npm test && npm run build
+      - name: Release tools, licensing and docs tests
+        run: node --test "tools/release/test/*.test.ts"
+      - name: Release tools type check
+        run: site/node_modules/.bin/tsc -p tools/release/tsconfig.json
+      - name: Console helper tests
+        run: python3 -B -m unittest discover -s tools/console -p 'test_*.py'
