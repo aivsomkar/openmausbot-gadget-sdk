@@ -92,13 +92,13 @@ static void apply(const pl_wifi_act_t *a) {
   }
 }
 
-static void deliver_scan(void) {
+static void deliver_scan(bool driver_ok) {
   uint16_t n = 0;
   wifi_ap_record_t *recs = NULL;
   gadget_wifi_ap_t *raw = NULL;
   gadget_wifi_ap_t out[PL_SCAN_MAX];
   uint8_t count = 0;
-  bool ok = esp_wifi_scan_get_ap_num(&n) == ESP_OK;
+  bool ok = driver_ok && esp_wifi_scan_get_ap_num(&n) == ESP_OK;
   if (ok && n > 0) {
     if (n > SCAN_RECORDS_MAX) {
       n = SCAN_RECORDS_MAX;
@@ -134,7 +134,7 @@ void port_wifi_on_msg(const port_wifi_msg_t *m) {
       a = pl_wifi_sta_disconnected(&s_w, m->local, m->auth_failed, now);
       break;
     case PORT_WIFI_SCAN_DONE:
-      deliver_scan();
+      deliver_scan(!m->scan_failed);
       a = pl_wifi_scan_done(&s_w, now);
       break;
   }
@@ -158,6 +158,7 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
                     d->reason == WIFI_REASON_HANDSHAKE_TIMEOUT;
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_SCAN_DONE) {
     m.kind = PORT_WIFI_SCAN_DONE;
+    m.scan_failed = data != NULL && ((const wifi_event_sta_scan_done_t *)data)->status != 0;
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
     const ip_event_got_ip_t *g = data;
     m.kind = PORT_WIFI_GOT_IP;

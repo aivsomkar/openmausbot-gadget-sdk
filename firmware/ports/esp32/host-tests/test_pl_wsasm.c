@@ -55,6 +55,15 @@ static void test_binary_over_8k_is_too_big_and_sticks(void) {
   TEST_ASSERT_EQUAL(PL_WS_TEXT, feed(PL_WS_OP_TEXT, true, 2, 0, "ok"));
 }
 
+static void test_fragments_over_16k_are_too_big(void) {
+  static uint8_t half[GADGET_TEXT_FRAME_MAX / 2];
+  TEST_ASSERT_EQUAL(PL_WS_NONE,
+                    pl_wsasm_feed(&a, PL_WS_OP_TEXT, false, sizeof(half), 0, half, sizeof(half), &msg, &msg_len));
+  TEST_ASSERT_EQUAL(PL_WS_NONE,
+                    pl_wsasm_feed(&a, PL_WS_OP_CONT, false, sizeof(half), 0, half, sizeof(half), &msg, &msg_len));
+  TEST_ASSERT_EQUAL(PL_WS_TOO_BIG, feed(PL_WS_OP_CONT, true, 1, 0, "x"));
+}
+
 static void test_text_of_exactly_16k_is_accepted(void) {
   static uint8_t big[GADGET_TEXT_FRAME_MAX];
   memset(big, 'a', sizeof(big));
@@ -85,6 +94,7 @@ int main(void) {
   RUN_TEST(test_fragmented_message_with_ping_between);
   RUN_TEST(test_empty_text_message);
   RUN_TEST(test_binary_over_8k_is_too_big_and_sticks);
+  RUN_TEST(test_fragments_over_16k_are_too_big);
   RUN_TEST(test_text_of_exactly_16k_is_accepted);
   RUN_TEST(test_protocol_errors);
   RUN_TEST(test_close_frame_is_ignored);

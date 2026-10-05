@@ -128,6 +128,28 @@ static void test_new_network_while_connected_disconnects_first(void) {
   TEST_ASSERT_TRUE(w.attempting);
 }
 
+static void test_got_ip_racing_attempt_timeout_reconnects(void) {
+  pl_wifi_connect(&w, 0);
+  pl_wifi_act_t a = pl_wifi_tick(&w, PL_WIFI_ATTEMPT_TIMEOUT_MS);
+  TEST_ASSERT_TRUE(a.disconnect);
+  pl_wifi_got_ip(&w); /* queued before our disconnect landed */
+  a = pl_wifi_sta_disconnected(&w, true, false, PL_WIFI_ATTEMPT_TIMEOUT_MS + 10);
+  TEST_ASSERT_TRUE(a.connect);
+  TEST_ASSERT_TRUE(a.post);
+  TEST_ASSERT_EQUAL(GADGET_WIFI_CONNECTING, a.state);
+}
+
+static void test_got_ip_racing_scan_pause_resumes_after_scan(void) {
+  pl_wifi_connect(&w, 0);
+  pl_wifi_scan(&w, 10);
+  pl_wifi_got_ip(&w); /* queued before our disconnect landed */
+  pl_wifi_act_t a = pl_wifi_sta_disconnected(&w, true, false, 20);
+  TEST_ASSERT_TRUE(a.scan);
+  TEST_ASSERT_FALSE(a.connect);
+  TEST_ASSERT_EQUAL(GADGET_WIFI_CONNECTING, a.state);
+  TEST_ASSERT_TRUE(pl_wifi_scan_done(&w, 2000).connect);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_connect_posts_connecting_then_connected);
@@ -140,5 +162,7 @@ int main(void) {
   RUN_TEST(test_attempt_timeout_counts_as_failure);
   RUN_TEST(test_disconnect_request_reports_off_and_stops);
   RUN_TEST(test_new_network_while_connected_disconnects_first);
+  RUN_TEST(test_got_ip_racing_attempt_timeout_reconnects);
+  RUN_TEST(test_got_ip_racing_scan_pause_resumes_after_scan);
   return UNITY_END();
 }

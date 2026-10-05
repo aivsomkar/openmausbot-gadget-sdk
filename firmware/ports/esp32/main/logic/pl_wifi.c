@@ -91,11 +91,21 @@ pl_wifi_act_t pl_wifi_got_ip(pl_wifi_t *w) {
 pl_wifi_act_t pl_wifi_sta_disconnected(pl_wifi_t *w, bool local, bool auth_failed, uint64_t now) {
   pl_wifi_act_t a = {0};
   if (local) {
+    /* The port's own disconnect only ever targets an attempt (a timeout, a
+     * scan pause or a new network), so `connected` here means a GOT_IP
+     * raced it: the link it reported is gone, and nothing else would retry. */
+    bool was_connected = w->connected;
+    w->connected = false;
     if (w->scan_pending) {
       w->scan_pending = false;
       w->scanning = true;
       w->attempting = false;
       a.scan = true;
+    }
+    if (was_connected && w->configured) {
+      w->failures = 0;
+      report(w, &a, GADGET_WIFI_CONNECTING);
+      start_attempt(w, &a, now); /* deferred to pl_wifi_scan_done() while scanning */
     }
     return a;
   }

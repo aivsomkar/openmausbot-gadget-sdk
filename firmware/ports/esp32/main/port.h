@@ -20,6 +20,7 @@ typedef struct {
   port_wifi_kind_t kind;
   bool local;        /* DISCONNECTED: reason WIFI_REASON_ASSOC_LEAVE, our own disconnect */
   bool auth_failed;  /* DISCONNECTED: wrong password or handshake failure */
+  bool scan_failed;  /* SCAN_DONE: the driver reported status 1 */
   char ip[16];       /* GOT_IP: dotted IPv4 */
 } port_wifi_msg_t;
 

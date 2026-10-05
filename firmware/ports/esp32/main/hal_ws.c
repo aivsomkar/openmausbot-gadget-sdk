@@ -58,10 +58,14 @@ static uint32_t s_gen;
 static bool s_active; /* from hal_ws_open() until core saw GADGET_EV_WS_CLOSED */
 static bool s_open;   /* between GADGET_EV_WS_OPEN and GADGET_EV_WS_CLOSED */
 
+/* Called only from the ws worker or the client task, never the gadget task,
+ * so it may block until the port queue has room. */
 static void post_closed(uint16_t code) {
   gadget_event_t ev = {.type = GADGET_EV_WS_CLOSED};
   ev.u.closed.code = code;
-  port_post_event(&ev);
+  while (!port_post_event(&ev)) {
+    vTaskDelay(pdMS_TO_TICKS(100)); /* core must see it: it re-enables hal_ws_open() */
+  }
 }
 
 static void free_conn(ws_conn_t *c) {
