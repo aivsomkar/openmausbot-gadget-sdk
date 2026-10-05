@@ -41,5 +41,8 @@ void ui_pager_show_tail(ui_pager_t *p);
 /* total_ms 0 = unknown: UI_MS_PER_LINE per line of a page. */
 void ui_pager_show_progress(ui_pager_t *p, uint32_t elapsed_ms, uint32_t total_ms);
 void ui_pager_set_hidden(ui_pager_t *p, bool hidden);
+/* Lowest y of anything the caption shows (its text on the current page, or
+ * the sub and status lines when one of them shows). */
+int32_t ui_pager_bottom(const ui_pager_t *p);
 
 #endif /* UI_PAGER_H */

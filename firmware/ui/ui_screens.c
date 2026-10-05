@@ -57,8 +57,10 @@ static void create_toast(void) {
   lv_obj_set_pos(t, mt->toast.x, mt->toast.y);
   lv_obj_set_size(t, mt->toast.w, mt->toast.h);
   lv_obj_set_style_radius(t, 14, 0);
-  lv_obj_set_style_bg_color(t, lv_color_hex(UI_COLOR_DIM), 0);
-  lv_obj_set_style_bg_opa(t, LV_OPA_40, 0);
+  /* Dim at 40 % on the black screen, but opaque: on the smaller boards the
+   * toast overlaps the caption or the Maus, which must not show through. */
+  lv_obj_set_style_bg_color(t, lv_color_mix(lv_color_hex(UI_COLOR_DIM), lv_color_hex(UI_COLOR_BG), LV_OPA_40), 0);
+  lv_obj_set_style_bg_opa(t, LV_OPA_COVER, 0);
   lv_obj_set_style_pad_all(t, 6, 0);
   g_ui.toast_name = label(t, mt->font_tiny, UI_COLOR_ACCENT, LV_LABEL_LONG_MODE_DOTS);
   lv_obj_set_size(g_ui.toast_name, mt->toast.w - 12, line_h(mt->font_tiny));
@@ -311,6 +313,11 @@ static void apply_toast(const ui_model_t *m) {
   lv_label_set_text(g_ui.toast_name, m->toast.bot_name);
   lv_label_set_text(g_ui.toast_text, m->toast.text);
   ui_set_hidden(g_ui.toast, false);
+  /* On the smaller boards the toast covers part of the caption: the caption
+   * steps aside while the toast shows instead of leaving lines half hidden. */
+  if (!ui_is_hidden(g_ui.caption.box) && g_ui.mt.toast.y < ui_pager_bottom(&g_ui.caption)) {
+    ui_pager_set_hidden(&g_ui.caption, true);
+  }
 }
 
 void ui_screens_apply(const ui_model_t *m) {

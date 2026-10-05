@@ -115,3 +115,15 @@ void ui_pager_set_hidden(ui_pager_t *p, bool hidden) {
     ui_set_hidden(p->status, true);
   }
 }
+
+int32_t ui_pager_bottom(const ui_pager_t *p) {
+  int32_t box_h = p->lines_per_page * p->line_h;
+  int32_t top = p->area.y;
+  if (p->total_lines <= p->lines_per_page && p->center_v) top += (box_h - p->text_h) / 2;
+  int32_t bottom = top + (p->text_h < box_h ? p->text_h : box_h);
+  if (!ui_is_hidden(p->sub) || !ui_is_hidden(p->status)) {
+    int32_t lines_bottom = p->status_area.y + p->status_area.h;
+    if (lines_bottom > bottom) bottom = lines_bottom;
+  }
+  return bottom;
+}

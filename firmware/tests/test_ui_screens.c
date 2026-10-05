@@ -421,6 +421,83 @@ static void toast_body(void) {
 }
 static void test_toast(void) { each_board(toast_body); }
 
+/* A toast sits over any screen (spec 5.5). On the smaller boards it overlaps
+ * the caption or the Maus, and nothing under it may show through: an empty
+ * toast over "Hi, I'm Jev" draws one flat colour inside its rounded corners. */
+static void toast_cover_body(void) {
+  m.screen = UI_SCREEN_IDLE;
+  m.maus = UI_MAUS_NOTIFYING;
+  strcpy(m.bot_name, "Jev");
+  m.toast.visible = true; /* no bot name, no text: only the toast's own background */
+  render(100);
+  lv_area_t a;
+  lv_obj_get_coords(g_ui.toast, &a);
+  const int32_t r = lv_obj_get_style_radius(g_ui.toast, 0);
+  lv_draw_buf_t *buf = lv_display_get_buf_active(disp);
+  uint16_t first = 0;
+  bool have = false;
+  for (int32_t y = a.y1 + r; y <= a.y2 - r; y++) {
+    for (int32_t x = a.x1 + r; x <= a.x2 - r; x++) {
+      uint16_t px;
+      memcpy(&px, buf->data + (uint32_t)y * buf->header.stride + (uint32_t)x * 2u, 2);
+      if (!have) {
+        first = px;
+        have = true;
+      }
+      char msg[96];
+      snprintf(msg, sizeof msg, "%s: something under the toast shows through at %d,%d", board->id, (int)x, (int)y);
+      TEST_ASSERT_EQUAL_HEX16_MESSAGE(first, px, msg);
+    }
+  }
+  TEST_ASSERT_TRUE(have);
+}
+static void test_toast_covers_what_is_under_it(void) { each_board(toast_cover_body); }
+
+/* ...and no line of text is left half under it: the caption either clears
+ * the toast or steps aside while the toast shows. */
+static lv_area_t g_toast_area;
+
+static bool is_in_toast(const lv_obj_t *o) {
+  for (; o; o = lv_obj_get_parent(o)) {
+    if (o == g_ui.toast) return true;
+  }
+  return false;
+}
+
+static void toast_overlap_cb(lv_obj_t *o, void *ctx) {
+  (void)ctx;
+  if (!lv_obj_check_type(o, &lv_label_class) || !visible(o) || is_in_toast(o) || lv_label_get_text(o)[0] == '\0') return;
+  lv_area_t a;
+  if (!shown_area(o, &a)) return;
+  char msg[160];
+  snprintf(msg, sizeof msg, "%s: \"%.40s\" is cut by the toast", board->id, lv_label_get_text(o));
+  TEST_ASSERT_FALSE_MESSAGE(clip(&a, &g_toast_area), msg);
+}
+
+static void toast_no_cut_body(void) {
+  m.maus = UI_MAUS_NOTIFYING;
+  m.toast.visible = true;
+  strcpy(m.toast.bot_name, "Jev");
+  strcpy(m.toast.text, "Morning brief is ready: 3 meetings, 2 reviews waiting.");
+  strcpy(m.bot_name, "Jev");
+  strcpy(m.host_name, "Omkar's computer");
+  m.screen = UI_SCREEN_IDLE;
+  render(100);
+  lv_obj_get_coords(g_ui.toast, &g_toast_area);
+  walk(lv_screen_active(), toast_overlap_cb, NULL);
+  m.screen = UI_SCREEN_OFFLINE;
+  m.maus = UI_MAUS_SLEEPING;
+  m.offline.reason = UI_OFFLINE_PROTOCOL;
+  m.offline.retry_at_ms = 9000;
+  render(200);
+  walk(lv_screen_active(), toast_overlap_cb, NULL);
+  TEST_ASSERT_TRUE(shows("Morning brief is ready"));
+  m.toast.visible = false; /* the caption comes back with the toast gone */
+  render(300);
+  TEST_ASSERT_TRUE(shows("MausBot didn't accept me."));
+}
+static void test_toast_never_cuts_text(void) { each_board(toast_no_cut_body); }
+
 /* ---- Review Focus ------------------------------------------------------- */
 
 static void long_text_body(void) {
@@ -650,6 +727,8 @@ int main(void) {
   RUN_TEST(test_update);
   RUN_TEST(test_image);
   RUN_TEST(test_toast);
+  RUN_TEST(test_toast_covers_what_is_under_it);
+  RUN_TEST(test_toast_never_cuts_text);
   RUN_TEST(test_long_unbroken_text_stays_on_screen);
   RUN_TEST(test_out_of_range_model_values_do_not_crash);
   RUN_TEST(test_ask_unlocks_without_a_model_change);
