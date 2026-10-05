@@ -160,3 +160,15 @@ if(GADGET_WITH_LVGL AND GADGET_BUILD_SIM)
                          ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
   endif()
 endif()
+
+# ---- P2b: fixture snapshots (turn screens and copy variants) --------------
+if(GADGET_WITH_LVGL AND GADGET_BUILD_SIM) # gadget_sim_lvgl lives in ports/sim
+  add_executable(test_ui_snapshots test_ui_snapshots.c)
+  target_link_libraries(test_ui_snapshots PRIVATE gadget_sim_lvgl unity::framework)
+  target_compile_options(test_ui_snapshots PRIVATE -Wall -Wextra -Werror)
+  foreach(board amoled-175c lcd-154 devkit)
+    add_test(NAME ui.snap.fixtures.${board} COMMAND test_ui_snapshots ${board}
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(ui.snap.fixtures.${board} PROPERTIES LABELS snapshot TIMEOUT 120)
+  endforeach()
+endif()
