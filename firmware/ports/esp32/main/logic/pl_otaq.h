@@ -27,7 +27,10 @@ void pl_otaq_init(pl_otaq_t *q, uint32_t size, uint32_t cap);
  * GADGET_ERR_ARG (empty or > GADGET_FW_CHUNK_MAX, or offset != next),
  * GADGET_ERR_LIMIT (past the image size). */
 gadget_status_t pl_otaq_admit(pl_otaq_t *q, uint32_t offset, size_t len);
-/* Undo the last successful admit of len bytes (the chunk could not be queued). */
+/* Undo the last successful admit of len bytes (the chunk could not be queued).
+ * Unused: since P2c deviation 5, everything in hal_ota_write() that can fail
+ * happens before pl_otaq_admit(). Kept, with test_unadmit_rolls_back, for a
+ * caller that queues after admitting. */
 void pl_otaq_unadmit(pl_otaq_t *q, size_t len);
 /* The worker wrote (or dropped) len bytes. */
 void pl_otaq_done(pl_otaq_t *q, size_t len);

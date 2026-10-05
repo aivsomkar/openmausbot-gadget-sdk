@@ -19,9 +19,11 @@ menu "OpenMausBot gadget"
         bool "Trust the test signing key t1 for OTA (never in board builds)"
         default n
         help
-            Compiles the test key t1 into core's key table. Only the simulator
-            and tests use it. Every board's sdkconfig.defaults keeps it off and
-            release CI checks that the shipped key table holds only r* keys.
+            Compiles the test key t1 into core's key table, for bench OTA tests
+            only (-D GADGET_TEST_KEYS=1 in its own build directory,
+            sdkconfig.test-keys). Every board's sdkconfig.defaults keeps it off,
+            the project refuses it in build/<board>, and release CI rejects any
+            key that is not r*.
 
     config GADGET_NVS_ENCRYPT
         bool "Encrypt NVS with an HMAC key in eFuse block 5 (permanent)"

@@ -54,14 +54,15 @@ void hal_log_set_enabled(bool enabled) {
 
 /* @omb lines bypass the log system, so `log off` never hides them. The
  * mutex keeps two @omb lines from interleaving (the gadget task and the
- * console task both write); installer sessions send `log off` first, so
- * log lines do not interleave with them either. */
+ * console task both write). Log lines from other tasks do not take it, so
+ * the line and its newline go out in one stdio call: a log line can land
+ * before or after an @omb line, never between the line and its newline
+ * (`@omb boot` is printed while logs are still on). */
 void hal_console_write(const char *line) {
   if (s_out_lock != NULL) {
     xSemaphoreTake(s_out_lock, portMAX_DELAY);
   }
-  fputs(line, stdout);
-  fputc('\n', stdout);
+  fprintf(stdout, "%s\n", line);
   fflush(stdout);
   if (s_out_lock != NULL) {
     xSemaphoreGive(s_out_lock);

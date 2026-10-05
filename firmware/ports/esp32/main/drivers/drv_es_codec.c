@@ -76,8 +76,9 @@ esp_err_t drv_es_codec_init(const drv_es_codec_cfg_t *c, board_audio_t *out) {
   ESP_RETURN_ON_FALSE(s_spk && s_mic, ESP_FAIL, TAG, "codec devices");
 
   esp_codec_dev_sample_info_t out_fs = {.bits_per_sample = 16, .channel = 1, .channel_mask = 0, .sample_rate = CODEC_RATE};
-  esp_codec_dev_sample_info_t in_fs = {
-    .bits_per_sample = 16, .channel = 1, .channel_mask = c->mic_channel_mask, .sample_rate = CODEC_RATE};
+  /* esp_codec_dev maps a 1-channel format to slot 0 = ES7210 SDOUT1 left =
+   * MIC1, the only microphone powered (A18). It ignores channel_mask here. */
+  esp_codec_dev_sample_info_t in_fs = {.bits_per_sample = 16, .channel = 1, .channel_mask = 0, .sample_rate = CODEC_RATE};
   ESP_RETURN_ON_FALSE(esp_codec_dev_open(s_spk, &out_fs) == ESP_CODEC_DEV_OK, ESP_FAIL, TAG, "open speaker");
   ESP_RETURN_ON_FALSE(esp_codec_dev_open(s_mic, &in_fs) == ESP_CODEC_DEV_OK, ESP_FAIL, TAG, "open mic");
   esp_codec_dev_set_in_gain(s_mic, c->mic_gain_db);

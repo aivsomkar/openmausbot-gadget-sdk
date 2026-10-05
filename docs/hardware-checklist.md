@@ -76,7 +76,7 @@ the monitor with `Ctrl-]`. Type console commands into the monitor.
 | 11 | Pair | Open a pairing code (MausBot: Settings → Remote access → Pair a gadget; fake host: `{"cmd":"code","code":"123456"}`), then `pair <code>` and `host auto` (MausBot) or `host <mac-ip>:8810` (fake host) | `status` reaches `"pair":"paired"` with `host_name`; the Idle screen shows the bot name |
 | 12 | mDNS | MausBot only (the fake host does not advertise mDNS): after pairing, `host auto`, `reboot` | It reconnects to the same host without `host <ip>`. On Windows hosts this may fail (spec §6.5); `host <ip>` then works |
 | 13 | TALK button | Hold TALK (BOOT) for 2 s while paired, release | Listening screen while held, then Thinking/Reply; a press under 300 ms does nothing |
-| 14 | Mic level | Hold TALK and speak | The level ring follows your voice; silence keeps it low. If it stays flat, set `BOARD_MIC_CHANNEL_MASK` to `0x2` in `board.h` and rebuild (codec boards) |
+| 14 | Mic level | Hold TALK and speak | The level ring follows your voice; silence keeps it low. If it stays flat on a codec board, record a failure: MIC1 should be on the left slot of ES7210 SDOUT1 |
 | 15 | Speaker | Fake host: let a voice turn finish (`--tone-ms 800`); MausBot: a voice reply | The tone or the reply is clearly audible, no distortion at 80 % volume; no loud hiss when idle |
 | 16 | Barge-in | Press TALK while the reply plays | Playback stops at once and listening starts |
 | 17 | Approval | Fake host `{"cmd":"ask","kind":"permission","title":"Run?","body":"ls"}` | Touch boards: tap Allow or Deny, the host logs `answer`. Button boards: TALK = Allow, CANCEL = Deny. Presses in the first 0.6 s are ignored |

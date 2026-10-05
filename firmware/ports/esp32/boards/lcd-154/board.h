@@ -38,7 +38,6 @@
 #define BOARD_I2S_DOUT 12            /* to ES8311 DSDIN */
 #define BOARD_I2S_DIN 11             /* from ES7210 ASDOUT */
 #define BOARD_PA_EN 7                /* NS4150B, active high */
-#define BOARD_MIC_CHANNEL_MASK 0x1
 #define BOARD_MIC_GAIN_DB 30.0f
 
 /* Buttons, all active low: BOOT (KEY_MINUS) = TALK, PLUS = CANCEL. PWR

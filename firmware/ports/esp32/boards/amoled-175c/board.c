@@ -62,7 +62,7 @@ esp_err_t board_audio_init(board_audio_t *out) {
   const drv_es_codec_cfg_t cfg = {
     .bus = s_i2c, .i2c_port = BOARD_I2C_PORT, .i2s_port = BOARD_I2S_PORT,
     .mclk = BOARD_I2S_MCLK, .bclk = BOARD_I2S_BCLK, .ws = BOARD_I2S_WS, .dout = BOARD_I2S_DOUT,
-    .din = BOARD_I2S_DIN, .pa = BOARD_PA_EN, .mic_channel_mask = BOARD_MIC_CHANNEL_MASK,
+    .din = BOARD_I2S_DIN, .pa = BOARD_PA_EN,
     .mic_gain_db = BOARD_MIC_GAIN_DB, .volume = 80,
   };
   return drv_es_codec_init(&cfg, out);

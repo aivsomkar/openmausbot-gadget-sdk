@@ -23,6 +23,7 @@ gadget_status_t pl_otaq_admit(pl_otaq_t *q, uint32_t offset, size_t len) {
   return GADGET_OK;
 }
 
+/* Unused by hal_ota.c (see pl_otaq.h). */
 void pl_otaq_unadmit(pl_otaq_t *q, size_t len) {
   q->next -= (uint32_t)len;
   pl_otaq_done(q, len);

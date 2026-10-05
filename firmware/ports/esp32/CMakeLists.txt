@@ -23,6 +23,15 @@ if((GADGET_TEST_KEYS OR GADGET_NVS_ENCRYPT) AND _gadget_bin STREQUAL _gadget_std
   message(FATAL_ERROR "Build test-key or NVS-encryption variants in their own -B directory, not build/${GADGET_BOARD} "
                       "(if build/${GADGET_BOARD} already has them cached, delete it and build again).")
 endif()
+# build/<other board> is that board's standard directory, whatever SDKCONFIG
+# says: check-size.sh and build-all.sh read build/<board> as <board>'s image.
+get_filename_component(_gadget_root "${CMAKE_CURRENT_LIST_DIR}/build" REALPATH)
+get_filename_component(_gadget_parent "${_gadget_bin}" DIRECTORY)
+get_filename_component(_gadget_leaf "${_gadget_bin}" NAME)
+if(_gadget_parent STREQUAL _gadget_root AND IS_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/boards/${_gadget_leaf}"
+   AND NOT _gadget_leaf STREQUAL GADGET_BOARD)
+  message(FATAL_ERROR "build/${_gadget_leaf} belongs to board ${_gadget_leaf}; build ${GADGET_BOARD} in build/${GADGET_BOARD}.")
+endif()
 
 # Board defaults come last so they win over the shared file.
 set(SDKCONFIG_DEFAULTS "sdkconfig.defaults;boards/${GADGET_BOARD}/sdkconfig.defaults")

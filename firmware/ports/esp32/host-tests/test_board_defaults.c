@@ -60,6 +60,8 @@ static void test_each_board_defaults_match_the_table(void) {
     TEST_ASSERT_NULL_MESSAGE(strstr(text, "CONFIG_LV_CONF_SKIP"), b->id);
     TEST_ASSERT_NULL_MESSAGE(strstr(text, "CONFIG_LV_CACHE_DEF_SIZE"), b->id);
     TEST_ASSERT_NULL_MESSAGE(strstr(text, "CONFIG_LV_IMAGE_HEADER_CACHE_DEF_CNT"), b->id);
+    /* nor the optimisation level */
+    TEST_ASSERT_NULL_MESSAGE(strstr(text, "CONFIG_COMPILER_OPTIMIZATION"), b->id);
     free(text);
   }
 }
@@ -100,6 +102,9 @@ static void test_shared_defaults(void) {
   TEST_ASSERT_NULL(strstr(text, "# CONFIG_LV_CONF_SKIP is not set"));
   TEST_ASSERT_TRUE(has_line(text, "CONFIG_LV_CACHE_DEF_SIZE=0"));
   TEST_ASSERT_TRUE(has_line(text, "CONFIG_LV_IMAGE_HEADER_CACHE_DEF_CNT=0"));
+  /* -O2 for every board and release image: ESP-IDF's default is Debug (-Og),
+   * which slows LVGL's software rendering on the gadget task. */
+  TEST_ASSERT_TRUE(has_line(text, "CONFIG_COMPILER_OPTIMIZATION_PERF=y"));
   free(text);
 }
 

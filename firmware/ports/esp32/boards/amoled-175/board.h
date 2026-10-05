@@ -58,7 +58,6 @@
 #define BOARD_I2S_DOUT 8
 #define BOARD_I2S_DIN 10
 #define BOARD_PA_EN 46
-#define BOARD_MIC_CHANNEL_MASK 0x1
 #define BOARD_MIC_GAIN_DB 30.0f
 
 /* Buttons */

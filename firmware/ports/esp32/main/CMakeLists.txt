@@ -57,7 +57,19 @@ idf_component_register(
   # component so those symbols resolve whatever the link order.
   WHOLE_ARCHIVE)
 
-if(NOT CMAKE_BUILD_EARLY_EXPANSION AND NOT "${CONFIG_GADGET_BOARD_ID}" STREQUAL "${gadget_board}")
-  message(FATAL_ERROR "sdkconfig says board '${CONFIG_GADGET_BOARD_ID}' but GADGET_BOARD is '${gadget_board}'. "
-                      "Use -D SDKCONFIG=build/${gadget_board}/sdkconfig (one sdkconfig per board).")
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+  if(NOT "${CONFIG_GADGET_BOARD_ID}" STREQUAL "${gadget_board}")
+    message(FATAL_ERROR "sdkconfig says board '${CONFIG_GADGET_BOARD_ID}' but GADGET_BOARD is '${gadget_board}'. "
+                        "Use -D SDKCONFIG=build/${gadget_board}/sdkconfig (one sdkconfig per board).")
+  endif()
+  # The variant switches work only through SDKCONFIG_DEFAULTS, and defaults
+  # never override an option an existing sdkconfig already lists.
+  if(GADGET_TEST_KEYS AND NOT CONFIG_GADGET_TEST_KEYS)
+    message(FATAL_ERROR "-D GADGET_TEST_KEYS=1 but this directory's sdkconfig has CONFIG_GADGET_TEST_KEYS off "
+                        "(defaults never override an existing sdkconfig): delete the build directory and build again.")
+  endif()
+  if(GADGET_NVS_ENCRYPT AND NOT CONFIG_GADGET_NVS_ENCRYPT)
+    message(FATAL_ERROR "-D GADGET_NVS_ENCRYPT=1 but this directory's sdkconfig has CONFIG_GADGET_NVS_ENCRYPT off "
+                        "(defaults never override an existing sdkconfig): delete the build directory and build again.")
+  endif()
 endif()

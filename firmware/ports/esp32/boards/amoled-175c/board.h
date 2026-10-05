@@ -57,9 +57,8 @@
 #define BOARD_I2S_BCLK 9
 #define BOARD_I2S_WS 45
 #define BOARD_I2S_DOUT 8             /* to ES8311 DSDIN */
-#define BOARD_I2S_DIN 10             /* from ES7210 SDOUT1 */
+#define BOARD_I2S_DIN 10             /* from ES7210 SDOUT1: MIC1, left slot. MIC3 is the echo reference (v2) */
 #define BOARD_PA_EN 46               /* NS4150B amplifier, active high */
-#define BOARD_MIC_CHANNEL_MASK 0x1   /* MIC1, left slot. MIC3 is the echo reference (v2) */
 #define BOARD_MIC_GAIN_DB 30.0f
 
 /* Buttons. PWR is the AXP2101 power key, mirrored to GPIO3 through a

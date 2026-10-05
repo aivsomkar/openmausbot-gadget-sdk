@@ -136,8 +136,9 @@ jobs:
           . "$IDF_PATH/export.sh"
           git config --global --add safe.directory '*'
           cd firmware/ports/esp32 && tools/build-all.sh
-      # Review Focus 1: a foreign sdkconfig stops the configure, both as a
-      # copied file and as amoled-175c's own build directory reused for lcd-154.
+      # Review Focus 1: a foreign sdkconfig stops the configure as a copied
+      # file, and amoled-175c's own build directory refuses lcd-154 both with
+      # its cached sdkconfig and with lcd-154's own.
       - name: Board guard refuses another board's sdkconfig
         if: matrix.board == 'amoled-175c' && matrix.variant == 'plain'
         run: |
@@ -152,11 +153,18 @@ jobs:
             exit 1
           fi
           grep -qF "$want" build/guard-mix.log
+          # CMake wraps long messages, so join the log's lines before matching.
+          want="build/amoled-175c belongs to board amoled-175c; build lcd-154 in build/lcd-154."
           if idf.py -B build/amoled-175c -D GADGET_BOARD=lcd-154 reconfigure >build/guard-reuse.log 2>&1; then
             echo "the board guard accepted build/amoled-175c for lcd-154" >&2
             exit 1
           fi
-          grep -qF "$want" build/guard-reuse.log
+          tr -s '[:space:]' ' ' <build/guard-reuse.log | grep -qF "$want"
+          if idf.py -B build/amoled-175c -D GADGET_BOARD=lcd-154 -D SDKCONFIG=build/lcd-154/sdkconfig reconfigure >build/guard-dir.log 2>&1; then
+            echo "the board guard accepted build/amoled-175c for lcd-154 with lcd-154's sdkconfig" >&2
+            exit 1
+          fi
+          tr -s '[:space:]' ' ' <build/guard-dir.log | grep -qF "$want"
       # build-all.sh already built and checked amoled-175c in its plain leg.
       - name: Build ${{ matrix.board }} (${{ matrix.variant }})
         if: matrix.board != 'amoled-175c' || matrix.variant != 'plain'

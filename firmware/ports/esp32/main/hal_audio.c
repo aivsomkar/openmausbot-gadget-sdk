@@ -33,6 +33,7 @@ static volatile bool s_spk_open;
 static volatile uint8_t s_volume = 80;
 static volatile uint32_t s_play_end_ms; /* when the last written audio leaves the DMA ring */
 static volatile bool s_unmute_pending;  /* hal_spk_stop() muted the codec */
+static volatile uint32_t s_stop_gen;    /* bumped by hal_spk_stop(), under s_lock */
 static uint32_t s_flush_samples;        /* one TX DMA ring plus one chunk */
 
 static uint32_t now32(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
@@ -80,6 +81,7 @@ static void spk_task(void *arg) {
       continue;
     }
     xSemaphoreTake(s_lock, portMAX_DELAY);
+    uint32_t gen = s_stop_gen;
     size_t n = pl_ring_read(&s_ring, chunk, SPK_CHUNK);
     xSemaphoreGive(s_lock);
     if (n == 0) {
@@ -91,7 +93,15 @@ static void spk_task(void *arg) {
       pl_pcm_volume(chunk, n, s_volume);
     }
     s_audio.spk_write(chunk, n);
-    s_play_end_ms = now32() + s_audio.spk_latency_ms;
+    /* A stop that arrived while spk_write blocked has already set the end
+     * to now. What this chunk added to the DMA ring is the stopped stream's
+     * tail (muted on the codec boards), so it must not push the end out
+     * again: hal_spk_buffered_ms() reports 0 right after a stop. */
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (gen == s_stop_gen) {
+      s_play_end_ms = now32() + s_audio.spk_latency_ms;
+    }
+    xSemaphoreGive(s_lock);
   }
 }
 
@@ -169,10 +179,11 @@ void hal_spk_stop(void) {
     s_unmute_pending = true;    /* the speaker task drains that ring, then unmutes */
   }
   xSemaphoreTake(s_lock, portMAX_DELAY);
+  s_stop_gen++; /* a chunk the speaker task is writing now no longer counts */
   pl_ring_clear(&s_ring);
-  xSemaphoreGive(s_lock);
   /* Without a codec mute (devkit) up to spk_latency_ms still plays out. */
   s_play_end_ms = now32();
+  xSemaphoreGive(s_lock);
 }
 
 void hal_spk_set_volume(uint8_t pct) {

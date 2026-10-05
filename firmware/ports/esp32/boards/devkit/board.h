@@ -37,6 +37,9 @@
 #define BOARD_SPK_LRC 16
 #define BOARD_SPK_DIN 17
 #define BOARD_SPK_RATE 24000
+/* v2: hal_spk_stop() lets up to one DMA ring (60 ms) play out because this
+ * amplifier has no mute. Fix: wire its SD (shutdown) pin to a free GPIO and
+ * give board_audio_t.spk_set_mute a function that drives it (contract §2.5). */
 
 /* Buttons, active low with internal pull-ups */
 #define BOARD_BTN_TALK 0             /* BOOT */

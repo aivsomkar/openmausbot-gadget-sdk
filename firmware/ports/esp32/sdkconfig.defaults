@@ -13,7 +13,10 @@ CONFIG_PARTITION_TABLE_OFFSET=0x8000
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 # CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK is not set
 
-# CPU, RTOS and the 8 MB octal PSRAM every board carries
+# CPU, RTOS and the 8 MB octal PSRAM every board carries. -O2 instead of
+# ESP-IDF's Debug default (-Og): LVGL renders in software on the gadget task,
+# and the image still fits the 6 MiB slot with room to spare.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_FREERTOS_HZ=1000
 CONFIG_SPIRAM=y
