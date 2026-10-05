@@ -115,3 +115,7 @@ if(GADGET_WITH_LVGL)
   gadget_ui_test(copy)
   gadget_ui_test(maus_engine)
 endif()
+
+if(GADGET_WITH_LVGL)
+  gadget_ui_test(screens)
+endif()
