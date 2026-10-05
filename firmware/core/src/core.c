@@ -246,6 +246,12 @@ void core_event(const gadget_event_t *ev) {
     case GADGET_EV_MIC_FRAME:
       interaction_mic(&ev->u.mic);
       break;
+    case GADGET_EV_CONSOLE_LINE:
+      console_exec_line(ev->u.console.line);
+      break;
+    case GADGET_EV_WIFI_SCAN:
+      console_on_scan(&ev->u.scan);
+      break;
     case GADGET_EV_WIFI_STATE:
     case GADGET_EV_WS_OPEN:
     case GADGET_EV_WS_TEXT:

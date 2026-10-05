@@ -36,6 +36,16 @@ static void host_error(const char *code) {
   fake_run(10); /* the close core asked for is delivered */
 }
 
+/* `status` as P2d's installer reads it: the @omb line contains want. The field
+ * order is pinned (contract §2.11), so want can span fields. */
+static void expect_status(const char *want) {
+  fake_console_clear();
+  fake_console_in("status");
+  const char *line = fake_console_count() > 0 ? fake_console_line(fake_console_count() - 1) : "";
+  TEST_ASSERT_EQUAL_STRING_LEN_MESSAGE("@omb {\"op\":\"status\",", line, 20, "no @omb status line");
+  TEST_ASSERT_NOT_NULL_MESSAGE(strstr(line, want), line);
+}
+
 static void test_unpaired_gadget_waits_on_setup(void) {
   fake_boot("amoled-175c");
   fake_run(5000);
@@ -190,12 +200,14 @@ static void test_device_limit_retries_every_10_s_for_120_s(void) {
    * P2d's installer can say why instead of timing out */
   TEST_ASSERT_EQUAL_INT(CORE_PAIR_ERROR, core_pair_state());
   TEST_ASSERT_EQUAL_STRING("device_limit", core_last_error());
+  expect_status("\"pair\":\"error\",\"error\":\"device_limit\",");
   int opens = fake_ws_opens();
   fake_run(9900);
   TEST_ASSERT_EQUAL_INT(opens, fake_ws_opens());
   fake_run(200);
   TEST_ASSERT_EQUAL_INT(opens + 1, fake_ws_opens());
   TEST_ASSERT_EQUAL_INT(CORE_PAIR_ERROR, core_pair_state()); /* also while a retry connects */
+  expect_status("\"pair\":\"error\",\"error\":\"device_limit\",");
   /* keep answering device_limit until the window closes */
   uint64_t gave_up = 0;
   while (gave_up == 0 && fake_now() < 200000) {
@@ -213,6 +225,7 @@ static void test_device_limit_retries_every_10_s_for_120_s(void) {
   }
   TEST_ASSERT_TRUE(gave_up >= 120000 && gave_up <= 120200); /* 120 s after the code was stored */
   TEST_ASSERT_EQUAL_INT(CORE_PAIR_UNPAIRED, core_pair_state());
+  expect_status("\"pair\":\"unpaired\",\"fw\":"); /* no error field once the code is gone */
   opens = fake_ws_opens();
   fake_run(60000);
   TEST_ASSERT_EQUAL_INT(opens, fake_ws_opens());

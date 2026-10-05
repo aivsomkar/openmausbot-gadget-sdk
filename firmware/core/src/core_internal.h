@@ -116,6 +116,10 @@ bool interaction_turn_in_flight(void);          /* sent and no done yet */
 /* Mean square of PCM16 samples (shared by the mic and speaker levels). */
 uint32_t core_mean_square(const int16_t *pcm, size_t n);
 
+/* ---- console_cmd.c ------------------------------------------------------------- */
+void console_exec_line(const char *line);       /* NULL: an over-long line was dropped */
+void console_on_scan(const gadget_wifi_scan_ev_t *scan);
+
 /* ---- screens.c -------------------------------------------------------------- */
 void screens_update(void);
 
