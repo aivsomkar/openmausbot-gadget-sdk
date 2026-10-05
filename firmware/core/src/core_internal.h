@@ -116,6 +116,15 @@ bool interaction_turn_in_flight(void);          /* sent and no done yet */
 /* Mean square of PCM16 samples (shared by the mic and speaker levels). */
 uint32_t core_mean_square(const int16_t *pcm, size_t n);
 
+/* ---- audio.c ------------------------------------------------------------------ */
+void audio_init(void);
+void audio_deinit(void);
+bool audio_on_msg(const gp_msg_t *m);           /* speak.begin / speak.end / speak.stop */
+void audio_on_binary(uint8_t stream, const uint8_t *payload, size_t len);   /* speaker frames */
+void audio_tick(void);
+void audio_stop_local(void);                    /* stop playback now (tap, barge-in, cancel) */
+bool audio_active(void);                        /* something is playing or buffered */
+
 /* ---- console_cmd.c ------------------------------------------------------------- */
 void console_exec_line(const char *line);       /* NULL: an over-long line was dropped */
 void console_on_scan(const gadget_wifi_scan_ev_t *scan);

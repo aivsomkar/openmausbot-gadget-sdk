@@ -222,6 +222,7 @@ gadget_status_t core_init(const core_config_t *cfg) {
   publish_identity();
   session_init();
   interaction_init();
+  audio_init();
   if (g_core.wifi_ssid[0] != '\0') hal_wifi_connect(g_core.wifi_ssid, g_core.wifi_pass);
 
   cJSON *boot = cJSON_CreateObject();
@@ -275,6 +276,7 @@ void core_tick(uint64_t now_ms) {
   g_core.ticked = true;
   session_tick();
   interaction_tick();
+  audio_tick();
   screens_update();
   model_commit();
 }
@@ -283,6 +285,7 @@ const ui_model_t *core_ui_model(void) { return &g_core.model; }
 
 void core_deinit(void) {
   if (g_core.initialized) {
+    audio_deinit();
     interaction_deinit();
     session_deinit();
   }
@@ -310,11 +313,13 @@ void core_on_ready(void) { hal_log(GADGET_LOG_INFO, CORE_TAG, "talking to %s", g
 
 void core_on_session_lost(void) {
   hal_log(GADGET_LOG_INFO, CORE_TAG, "session lost");
+  audio_stop_local();
   interaction_on_session_lost();
 }
 
 void core_on_msg(const gp_msg_t *m) {
   if (interaction_on_msg(m)) return;
+  if (audio_on_msg(m)) return;
   switch (m->op) {
     default:
       hal_log(GADGET_LOG_DEBUG, CORE_TAG, "ignored %s", gp_op_name(m->op));
@@ -323,8 +328,10 @@ void core_on_msg(const gp_msg_t *m) {
 }
 
 void core_on_binary(gp_bin_kind_t kind, uint8_t stream, const uint8_t *payload, size_t len) {
-  (void)payload;
   switch (kind) {
+    case GP_BIN_SPEAKER:
+      audio_on_binary(stream, payload, len);
+      break;
     default:
       hal_log(GADGET_LOG_DEBUG, CORE_TAG, "ignored binary kind %d stream %u (%u bytes)", (int)kind, (unsigned)stream,
               (unsigned)len);

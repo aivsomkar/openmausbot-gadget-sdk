@@ -29,6 +29,7 @@ gadget_unit_test(core_init)
 gadget_unit_test(session)
 gadget_unit_test(turns)
 gadget_unit_test(console)
+gadget_unit_test(audio)
 
 # protocol/vectors in C (label vectors).
 add_executable(test_vectors test_vectors.c)

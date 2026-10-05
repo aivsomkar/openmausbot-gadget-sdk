@@ -17,6 +17,7 @@ static struct {
   uint64_t press_at;
   int16_t x0, y0;
   bool moved;          /* the touch moved past the swipe threshold */
+  bool press_stopped_audio; /* this press already stopped playback (barge-in or tap) */
   bool rec;            /* voice.begin sent, frames streaming */
   char rec_turn[GADGET_TURN_MAX + 1];
   uint8_t rec_stream;
@@ -157,6 +158,16 @@ static void begin_press(press_t src, int16_t x, int16_t y) {
   I.y0 = y;
   I.moved = false;
   I.pre_n = 0;
+  I.press_stopped_audio = false;
+  if (audio_active()) {
+    /* barge-in: stop playback now; tell the host if the turn is still running */
+    audio_stop_local();
+    I.press_stopped_audio = true;
+    if (I.in_flight && !I.stop_sent) {
+      send_stop(I.turn);
+      I.stop_sent = true;
+    }
+  }
   if (hal_mic_start(GADGET_MIC_RATE) != GADGET_OK) hal_log(GADGET_LOG_ERROR, TAG, "mic did not start");
 }
 
@@ -172,8 +183,9 @@ static void cancel_action(void) {
     cancel_recording();
     return;
   }
-  if (I.in_flight) {
-    if (!I.stop_sent) {
+  if (audio_active() || I.in_flight) {
+    audio_stop_local();
+    if (I.in_flight && !I.stop_sent) {
       send_stop(I.turn);
       I.stop_sent = true;
     }
@@ -186,6 +198,7 @@ static void cancel_action(void) {
 static void tap(int16_t x, int16_t y) {
   (void)x;
   (void)y;
+  if (I.press_stopped_audio) return; /* that tap stopped the speech: the reply stays */
   if (I.reply_shown && !I.in_flight) clear_turn_model();
 }
 
@@ -280,6 +293,7 @@ void interaction_tick(void) {
       g_core.model.listening.countdown_s = (uint8_t)((GADGET_UTTERANCE_MAX_MS - elapsed + 999u) / 1000u);
     }
   }
+  if (I.reply_shown && audio_active()) I.reply_until = now + GADGET_REPLY_IDLE_MS; /* 20 s after the speech ends */
   if (I.reply_shown && !I.in_flight && I.reply_until != 0 && now >= I.reply_until) clear_turn_model();
   publish();
 }
