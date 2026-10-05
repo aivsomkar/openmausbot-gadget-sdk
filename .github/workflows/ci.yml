@@ -29,3 +29,29 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:fake-host
+
+  host-c:
+    # P2a: core, the headless simulator and the C tests on both mbedTLS lines
+    # (3.6.x like ESP-IDF 5.5, 4.x like ESP-IDF 6.0), on Linux and macOS.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+        mbedtls: ["3.6.7", "4.2.0"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      # the e2e label runs firmware/tests/e2e/run.ts, whose fake host imports ws
+      - run: npm ci
+      - name: Configure
+        run: >-
+          cmake -S firmware -B build/host -DCMAKE_BUILD_TYPE=Debug -DGADGET_WITH_LVGL=OFF
+          -DGADGET_MBEDTLS_VERSION=${{ matrix.mbedtls }}
+      - name: Build
+        run: cmake --build build/host -j4
+      - name: Test
+        run: ctest --test-dir build/host --output-on-failure -L "unit|vectors|e2e"
