@@ -31,3 +31,13 @@ void pl_otaq_unadmit(pl_otaq_t *q, size_t len) {
 void pl_otaq_done(pl_otaq_t *q, size_t len) {
   q->queued = len >= q->queued ? 0 : q->queued - (uint32_t)len;
 }
+
+pl_otaq_split_t pl_otaq_split(uint32_t staged, size_t len, bool last) {
+  pl_otaq_split_t s = {0};
+  uint32_t room = staged < GADGET_FW_CHUNK_MAX ? GADGET_FW_CHUNK_MAX - staged : 0;
+  s.head = len < room ? (uint32_t)len : room;
+  s.tail = (uint32_t)len - s.head;
+  s.send_head = staged + s.head == GADGET_FW_CHUNK_MAX || (last && staged + s.head > 0);
+  s.send_tail = last && s.tail > 0;
+  return s;
+}
