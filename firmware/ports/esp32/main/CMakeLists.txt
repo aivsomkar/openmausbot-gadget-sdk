@@ -27,7 +27,8 @@ set(port_srcs
   hal_input.c
   hal_battery.c
   hal_ota.c
-  display.c)
+  display.c
+  "${board_dir}/board.c")
 
 set(logic_srcs
   logic/pl_event.c
