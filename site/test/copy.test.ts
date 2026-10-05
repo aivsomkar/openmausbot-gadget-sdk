@@ -30,6 +30,24 @@ test("every pairing failure has a sentence", () => {
   );
 });
 
+test("the page's status lines and error hints live in COPY", () => {
+  assert.equal(COPY.pairing, "Pairing…");
+  assert.equal(COPY.codeFormat, "The code is six digits.");
+  assert.equal(COPY.hostFormat, "Type an address like 192.168.1.20:8810.");
+  assert.equal(COPY.portBusyHint, "Close it (a serial monitor or another tab) and try again.");
+  assert.equal(COPY.writeFailedHint, "Click Connect and install to try again.");
+  assert.equal(COPY.flashTooSmallHint, "Use an ESP32-S3-DevKitC-1-N16R8 or one of the Waveshare boards.");
+  assert.equal(COPY.typeNetworkName, "Type the network name instead.");
+});
+
+test("a lost port while pairing points at the button that reopens the console", () => {
+  // Pressing Pair again would reuse the dead console; "Already installed?" closes it and asks for the port again.
+  const lost = pairingFailure({ kind: "lost" }, "Home");
+  assert.match(lost, /Press RST or unplug and replug the board/);
+  assert.ok(lost.includes(COPY.installedPath), lost);
+  assert.doesNotMatch(lost, /then try again/);
+});
+
 test("the port hint says only ESP32-S3 boards on native USB show up", () => {
   // requestPort() filters on 0x303A/0x1001: a plain ESP32 or a USB-to-UART port never appears (Review Focus 5).
   assert.match(COPY.noPortHint, /ESP32-S3/);

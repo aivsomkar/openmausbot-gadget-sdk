@@ -20,19 +20,26 @@ export const COPY = {
   keepHelp: "A normal install keeps the gadget's identity, Wi-Fi and pairing.",
   installedPath: "Already installed? Set up Wi-Fi and pairing",
   pressRst: "Press RST or unplug and replug the board",
+  portBusyHint: "Close it (a serial monitor or another tab) and try again.",
+  writeFailedHint: "Click Connect and install to try again.",
+  flashTooSmallHint: "Use an ESP32-S3-DevKitC-1-N16R8 or one of the Waveshare boards.",
   waitingForBoard: "Waiting for the gadget to start…",
   stillPaired: (host: string | undefined) => (host ? `Still paired with ${host}. You're done.` : "Still paired. You're done."),
   reconnecting: "Reconnecting to MausBot…",
   wifiTitle: "Choose a Wi-Fi network",
   wifiOther: "Other network…",
+  typeNetworkName: "Type the network name instead.",
   codeTitle: "Pair with MausBot",
   codeHow: `Open ${PAIR_PATH} and type the six-digit code here.`,
+  codeFormat: "The code is six digits.",
+  pairing: "Pairing…",
   remoteAccessOn: "Remote access must be on in MausBot.",
   windowsPublic:
     "If MausBot runs on Windows and this network is set to Public, Windows' firewall blocks the gadget. Open Windows Settings → Network & internet, choose this network and set its network profile type to Private.",
   hostTitle: "Find MausBot",
   hostNone: "The gadget couldn't find MausBot on this network. Type the address shown under Pair a gadget, for example 192.168.1.20:8810.",
   hostPick: "The gadget found more than one MausBot. Pick yours, or type the address shown under Pair a gadget.",
+  hostFormat: "Type an address like 192.168.1.20:8810.",
   deviceLimitWaiting:
     "MausBot has too many devices. Remove one in MausBot → Settings → Remote access; the gadget keeps trying for two minutes.",
   paired: (host: string | undefined) => (host ? `Paired with ${host}. Hold to talk!` : "Paired. Hold to talk!"),
@@ -73,7 +80,8 @@ export function pairingFailure(result: PairingResult, ssid: string): string {
     case "timeout":
       return `Pairing didn't finish. Check that Remote access is on in MausBot, get a new code from Pair a gadget, and try again.`;
     case "lost":
-      return `The board's port closed. ${COPY.pressRst}, then try again.`;
+      // Pair would reuse the dead console; this button closes it and asks for the port again.
+      return `The board's port closed. ${COPY.pressRst}, then click "${COPY.installedPath}".`;
     case "paired":
     case "need_host":
       return "";

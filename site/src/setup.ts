@@ -144,7 +144,9 @@ export const STALE_POLLS = 3;
  * Sends `commands`, then polls `status` every pollMs until paired, a failure,
  * or timeoutMs. A `pair: "error"` or `wifi: "failed"` left over from the
  * previous attempt is ignored until that side shows progress or STALE_POLLS
- * replies have passed. `device_limit` keeps polling (spec §4.3).
+ * replies have passed. `device_limit` keeps polling (spec §4.3); when the
+ * gadget's 120 s window closes, `status` shows `unpaired` (contract §2.11
+ * rule 2), which ends the wait as `device_limit`.
  */
 export async function pairAndWait(
   io: ConsoleIO,
@@ -165,6 +167,7 @@ export async function pairAndWait(
   let pairMoved = false; // pair has been code_stored/connecting/paired since the commands: the new code is in use
   let wifiMoved = false; // wifi has been connecting/connected since the commands: the new network is in use
   let noticed = false;
+  let limited = false; // the gadget reported device_limit since the commands
   for (;;) {
     for (const e of io.drain()) {
       const m = e.msg;
@@ -192,15 +195,17 @@ export async function pairAndWait(
         if (m.pair === "error" && m.error === "device_limit") {
           if (!noticed) options.onNotice?.("device_limit");
           noticed = true;
+          limited = true;
           continue;
         }
+        if (limited && m.pair === "unpaired") return { kind: "device_limit", status: m };
         if (m.pair === "error" && m.error !== undefined && (pairMoved || settled)) return { kind: "pair_error", code: m.error, status: m };
         if (m.wifi === "failed" && (wifiMoved || settled)) return { kind: "wifi_failed", status: m };
       }
     }
     if (io.lost) return { kind: "lost" };
     if (clock.now() >= end) {
-      return last?.pair === "error" && last.error === "device_limit" ? { kind: "device_limit", status: last } : { kind: "timeout", status: last };
+      return limited && last !== null ? { kind: "device_limit", status: last } : { kind: "timeout", status: last };
     }
     try {
       await io.send("status");

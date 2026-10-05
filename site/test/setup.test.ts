@@ -88,6 +88,28 @@ test("device_limit keeps polling with one notice; it is a result only when time 
   assert.equal((await pairAndWait(stuck, cmds, fakeClock(), { timeoutMs: 5000 })).kind, "device_limit");
 });
 
+test("device_limit that the gadget clears after its 120 s window ends as device_limit, before the timeout", async () => {
+  // Spec §4.3 and contract §2.11 rule 2: 120 s after `pair` the gadget drops the code and `status` shows `unpaired`.
+  const clock = fakeClock();
+  const notices: PairingNotice[] = [];
+  let start = 0;
+  const g = new FakeGadget({
+    onCommand: (line, gg) => {
+      if (line.startsWith("pair ")) {
+        start = clock.now();
+        gg.set({ pair: "code_stored" });
+      }
+      if (line === "host auto") gg.set({ wifi: "connected", pair: "error", error: "device_limit" });
+      if (line === "status" && clock.now() - start >= 120_000) gg.set({ pair: "unpaired", error: undefined });
+    },
+  });
+  const r = await pairAndWait(g, cmds, clock, { onNotice: (n) => notices.push(n) });
+  assert.equal(r.kind, "device_limit");
+  assert.equal(r.kind === "device_limit" && r.status.pair, "unpaired");
+  assert.ok(clock.t < 150_000, `ended at ${clock.t} ms, after the 150 s timeout`);
+  assert.deepEqual(notices, ["device_limit"]);
+});
+
 test("no MausBot found asks for an address; several ask the person to pick", async () => {
   const none = new FakeGadget({ onCommand: (line, g) => line === "host auto" && g.emit('@omb {"op":"hosts","hosts":[]}') });
   const r1 = await pairAndWait(none, cmds, fakeClock());

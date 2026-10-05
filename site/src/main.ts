@@ -44,13 +44,13 @@ function friendly(err: unknown): string {
   if (err instanceof InstallerError) {
     switch (err.code) {
       case "port_busy":
-        return `${err.message} Close it (a serial monitor or another tab) and try again.`;
+        return `${err.message} ${COPY.portBusyHint}`;
       case "port_lost":
         return `${err.message} ${COPY.pressRst}.`;
       case "write_failed":
-        return `${err.message} Click Connect and install to try again.`;
+        return `${err.message} ${COPY.writeFailedHint}`;
       case "flash_too_small":
-        return `${err.message} Use an ESP32-S3-DevKitC-1-N16R8 or one of the Waveshare boards.`;
+        return `${err.message} ${COPY.flashTooSmallHint}`;
       default:
         return err.message;
     }
@@ -68,7 +68,8 @@ function step(name: "wifi" | "pair" | "done" | null): void {
 function setBusy(value: boolean): void {
   busy = value;
   el<HTMLButtonElement>("install").disabled = value || board === null || index?.boards[board] === undefined;
-  el<HTMLButtonElement>("installed").disabled = value || board === null;
+  // setUpInstalled never needs a board, and it is the way back after a lost port (pairingFailure "lost").
+  el<HTMLButtonElement>("installed").disabled = value;
 }
 
 function setPairing(value: boolean): void {
@@ -232,7 +233,7 @@ async function startWifi(notice?: string): Promise<void> {
       list.append(item);
     }
   } catch (err) {
-    text("wifi-error", `${notice === undefined ? "" : `${notice} `}${friendly(err)} Type the network name instead.`);
+    text("wifi-error", `${notice === undefined ? "" : `${notice} `}${friendly(err)} ${COPY.typeNetworkName}`);
     show("wifi-error", true);
   }
 }
@@ -254,7 +255,7 @@ function onWifiSubmit(event: SubmitEvent): void {
 async function runPairing(commands: string[]): Promise<void> {
   if (con === null || pairing) return;
   setPairing(true);
-  text("pair-status", "Pairing…");
+  text("pair-status", COPY.pairing);
   try {
     handlePairing(await pairAndWait(con, commands, realClock, { onNotice: () => text("pair-status", COPY.deviceLimitWaiting) }));
   } finally {
@@ -266,7 +267,7 @@ async function onCodeSubmit(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   if (pairing) return;
   const code = normalizePairCode(el<HTMLInputElement>("code").value);
-  if (code === null) return text("pair-status", "The code is six digits.");
+  if (code === null) return text("pair-status", COPY.codeFormat);
   // A typed address stays pinned: `host auto` would erase the gadget's stored host_addr (contract §2.11).
   await runPairing(setupCommands({ code, ...wifi, address: pinnedHost }));
 }
@@ -275,7 +276,7 @@ async function onHostSubmit(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   if (pairing) return;
   const address = normalizeHostAddress(el<HTMLInputElement>("host-address").value);
-  if (address === null) return text("pair-status", "Type an address like 192.168.1.20:8810.");
+  if (address === null) return text("pair-status", COPY.hostFormat);
   pinnedHost = address;
   await runPairing([`host ${address}`]);
 }
