@@ -106,9 +106,12 @@ export function createLineSplitter(): (chunk: string) => string[] {
   };
 }
 
-/** One console argument in esp_console_split_argv quoting: `"…"` with `\\` and `\"`. Throws on CR or LF. */
+/**
+ * One console argument in esp_console_split_argv quoting: `"…"` with `\\` and `\"`.
+ * Throws on CR, LF or NUL (the firmware's line buffer is a C string, so a NUL would cut the line).
+ */
 export function quoteArg(value: string): string {
-  if (/[\r\n]/.test(value)) throw new RangeError("console arguments cannot contain line breaks");
+  if (/[\r\n\u0000]/.test(value)) throw new RangeError("console arguments cannot contain line breaks or NUL characters");
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
@@ -122,10 +125,12 @@ export function setupCommands(input: { code: string; ssid: string; password: str
 }
 
 const utf8Length = (s: string): number => new TextEncoder().encode(s).length;
+/** firmware/core/src/console.c parse_host: the address before `:port` is at most 57 bytes (ASCII only here). */
+const MAX_HOST_BYTES = 57;
 
 /** The console's `wifi` rules (contract §2.11) as a sentence for the person, or null when fine. */
 export function wifiProblem(ssid: string, password: string): string | null {
-  if (/[\r\n]/.test(ssid) || /[\r\n]/.test(password)) return "Network names and passwords can't contain line breaks.";
+  if (/[\r\n\u0000]/.test(ssid) || /[\r\n\u0000]/.test(password)) return "Network names and passwords can't contain line breaks or NUL characters.";
   const s = utf8Length(ssid);
   if (s < 1 || s > 32) return "The network name must be 1 to 32 bytes long.";
   if (password === "") return null;
@@ -141,13 +146,16 @@ export function normalizePairCode(text: string): string | null {
   return /^\d{6}$/.test(digits) ? digits : null;
 }
 
-/** `host` argument from what the person typed, or null: hostname or IPv4, optional port 1–65535. */
+/**
+ * `host` argument from what the person typed, or null: hostname or IPv4 of at
+ * most 57 bytes (the firmware's limit, so `addr:port` fits 64), optional port 1–65535.
+ */
 export function normalizeHostAddress(text: string): string | null {
   let t = text.trim().replace(/^(?:https?|wss?):\/\//i, "");
   t = t.replace(/\/.*$/, "");
   const m = /^([A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)(?::(\d{1,5}))?$/.exec(t);
   const host = m?.[1];
-  if (m === null || host === undefined) return null;
+  if (m === null || host === undefined || host.length > MAX_HOST_BYTES) return null;
   const port = m[2];
   if (port === undefined) return host;
   const n = Number(port);

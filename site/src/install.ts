@@ -40,18 +40,21 @@ export function parseInstallIndex(json: unknown): InstallIndex {
       throw new InstallIndexError(`${board}: needs parts and full`);
     }
     if (entry.parts.length < 1 || entry.parts.length > 8) throw new InstallIndexError(`${board}: 1 to 8 parts`);
+    const full = entry.full;
     const seen = new Set<number>();
     const parts = entry.parts.map((p: unknown) => {
       if (!isObj(p) || typeof p.path !== "string" || !FILE_RE.test(p.path) || typeof p.offset !== "string" || !OFFSET_RE.test(p.offset)) {
         throw new InstallIndexError(`${board}: bad part ${JSON.stringify(p)}`);
       }
+      // Defense in depth for Review Focus 4: the merged image covers NVS, so writing it erases the pairing.
+      if (p.path === full || p.path.endsWith("-full.bin")) throw new InstallIndexError(`${board}: ${p.path} is the merged image`);
       const address = Number.parseInt(p.offset, 16);
       if (address % SECTOR !== 0 || address >= FLASH_LIMIT) throw new InstallIndexError(`${board}: offset ${p.offset} is not a 4 KiB sector in 16 MB`);
       if (seen.has(address)) throw new InstallIndexError(`${board}: offset ${p.offset} twice`);
       seen.add(address);
       return { path: p.path, offset: p.offset };
     });
-    out.boards[board] = { parts, full: entry.full };
+    out.boards[board] = { parts, full };
   }
   return out;
 }

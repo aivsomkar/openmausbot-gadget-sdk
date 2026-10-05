@@ -5,6 +5,17 @@ import { createLineSplitter, parseOmbLine, type OmbMessage } from "./console.ts"
 import { InstallerError } from "./errors.ts";
 import type { SerialPortLike } from "./reset.ts";
 
+/**
+ * Web Serial read errors that end only the current stream: the port stays
+ * open and `port.readable` hands out a fresh stream. Every other error (the
+ * device was lost) ends the session.
+ */
+const NON_FATAL_READ_ERRORS: readonly string[] = ["BufferOverrunError", "BreakError", "FramingError", "ParityError"];
+
+function isNonFatal(e: unknown): boolean {
+  return typeof e === "object" && e !== null && "name" in e && typeof e.name === "string" && NON_FATAL_READ_ERRORS.includes(e.name);
+}
+
 export interface ConsoleEvent {
   line: string;
   msg: OmbMessage | null;
@@ -34,6 +45,8 @@ export class SerialConsole implements ConsoleSession {
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private queue: ConsoleEvent[] = [];
   private closed = false;
+  /** The last queued write; each send() waits for the one before it, because a stream takes one writer at a time. */
+  private tail: Promise<void> = Promise.resolve();
 
   constructor(port: SerialPortLike, options: { now?: () => number; writeTimeoutMs?: number } = {}) {
     this.port = port;
@@ -43,28 +56,35 @@ export class SerialConsole implements ConsoleSession {
   }
 
   private async readLoop(): Promise<void> {
-    const readable = this.port.readable;
-    if (readable === null) {
-      this.lost = true;
-      return;
-    }
-    const reader = readable.getReader();
-    this.reader = reader;
     const decoder = new TextDecoder();
     const split = createLineSplitter();
     try {
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value !== undefined && value.length > 0) {
-          this.lastOutputAt = this.now();
-          for (const line of split(decoder.decode(value, { stream: true }))) this.push(line);
+      // One pass per stream: after a non-fatal error the port hands out a fresh `readable`.
+      for (let previous: ReadableStream<Uint8Array> | null = null; !this.closed; ) {
+        const readable = this.port.readable;
+        // No stream (or the same errored one again) means the port is gone.
+        if (readable === null || readable === previous) return;
+        previous = readable;
+        const reader = readable.getReader();
+        this.reader = reader;
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) return;
+            if (value !== undefined && value.length > 0) {
+              this.lastOutputAt = this.now();
+              for (const line of split(decoder.decode(value, { stream: true }))) this.push(line);
+            }
+          }
+        } catch (e) {
+          // A non-fatal error (buffer overrun, break, framing, parity) lost some bytes but not the board.
+          // Anything else means the device dropped off the bus (reset, unplug); `lost` tells the caller.
+          if (!isNonFatal(e)) return;
+        } finally {
+          reader.releaseLock();
         }
       }
-    } catch {
-      // The device dropped off the bus (reset, unplug); `lost` tells the caller.
     } finally {
-      reader.releaseLock();
       if (!this.closed) this.lost = true;
     }
   }
@@ -72,7 +92,11 @@ export class SerialConsole implements ConsoleSession {
   private push(line: string): void {
     const event = { line, msg: parseOmbLine(line) };
     this.queue.push(event);
-    this.onEvent?.(event);
+    try {
+      this.onEvent?.(event);
+    } catch {
+      // A UI error must not end the console.
+    }
   }
 
   drain(): ConsoleEvent[] {
@@ -81,7 +105,14 @@ export class SerialConsole implements ConsoleSession {
     return events;
   }
 
-  async send(line: string): Promise<void> {
+  /** Writes `line` and a newline. Overlapping calls are written one after another, in call order. */
+  send(line: string): Promise<void> {
+    const run = this.tail.then(() => this.write(line));
+    this.tail = run.catch(() => undefined);
+    return run;
+  }
+
+  private async write(line: string): Promise<void> {
     if (this.lost || this.closed || this.port.writable === null) throw new InstallerError("port_lost", "The board's port closed.");
     const writer = this.port.writable.getWriter();
     let timer: ReturnType<typeof setTimeout> | undefined;

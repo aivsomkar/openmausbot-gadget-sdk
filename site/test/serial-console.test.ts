@@ -65,3 +65,69 @@ test("a write the gadget never reads times out instead of hanging", async () => 
   const con = new SerialConsole(port, { writeTimeoutMs: 20 });
   await assert.rejects(con.send("status"), (e: unknown) => e instanceof InstallerError && e.code === "console_write_timeout");
 });
+
+test("two overlapping sends both arrive, in order", async () => {
+  const port = new FakePort();
+  await port.open({ baudRate: 115200 });
+  const con = new SerialConsole(port);
+  await Promise.all([con.send('wifi "Home Net" "pass word"'), con.send("status"), con.send("scan")]);
+  assert.deepEqual(port.sent(), ['wifi "Home Net" "pass word"', "status", "scan"]);
+  await con.close();
+});
+
+test("an onEvent callback that throws does not end the console", async () => {
+  const port = new FakePort();
+  await port.open({ baudRate: 115200 });
+  const con = new SerialConsole(port);
+  con.onEvent = () => {
+    throw new Error("the page failed to draw a log line");
+  };
+  port.emit("I (10) boot: one\r\n");
+  await tick();
+  port.emit('@omb {"op":"say","turn":"t1-1"}\r\n');
+  await tick();
+  assert.equal(con.lost, false);
+  assert.deepEqual(con.drain().map((e) => e.msg?.op ?? e.line), ["I (10) boot: one", "say"]);
+  await con.send("status");
+  assert.deepEqual(port.sent(), ["status"]);
+  await con.close();
+});
+
+test("a non-fatal read error keeps the console; a lost device still ends it", async () => {
+  for (const name of ["BufferOverrunError", "BreakError", "FramingError", "ParityError"]) {
+    const port = new FakePort();
+    await port.open({ baudRate: 115200 });
+    const con = new SerialConsole(port);
+    port.emit("I (10) boot: busy log\r\n");
+    await tick();
+    port.readError(name);
+    await tick();
+    port.emit('@omb {"op":"say","turn":"t1-1"}\r\n');
+    await tick();
+    assert.equal(con.lost, false, name);
+    assert.deepEqual(con.drain().map((e) => e.msg?.op ?? e.line), ["I (10) boot: busy log", "say"], name);
+    port.unplug();
+    await con.finished;
+    assert.equal(con.lost, true, name);
+  }
+});
+
+test("close() during a session ends it without marking it lost", async () => {
+  const port = new FakePort();
+  await port.open({ baudRate: 115200 });
+  const con = new SerialConsole(port);
+  port.readError("BreakError");
+  await tick();
+  await con.close();
+  assert.equal(con.lost, false);
+  assert.equal(port.isOpen, false);
+});
+
+test("a port that hands back the errored stream ends the session instead of spinning", async () => {
+  const port = new FakePort();
+  await port.open({ baudRate: 115200 });
+  const con = new SerialConsole(port);
+  port.readError("BreakError", false);
+  await con.finished;
+  assert.equal(con.lost, true);
+});

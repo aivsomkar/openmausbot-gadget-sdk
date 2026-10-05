@@ -63,6 +63,9 @@ test("parseInstallIndex refuses broken or unsafe files", () => {
     { version: "1.1.0", boards: { x: { parts: [{ path: "a.bin", offset: "0x1000000" }], full: "f.bin" } } },
     { version: "1.1.0", boards: { x: { parts: [{ path: "a.bin", offset: "0x0" }, { path: "b.bin", offset: "0x000" }], full: "f.bin" } } },
     { version: "1.1.0", boards: { x: { parts: [{ path: "a.bin", offset: "0x0" }] } } },
+    // The merged image as a part would be written over NVS and erase the pairing (Review Focus 4).
+    { version: "1.1.0", boards: { x: { parts: [{ path: "f.bin", offset: "0x0" }], full: "f.bin" } } },
+    { version: "1.1.0", boards: { x: { parts: [{ path: "a.bin", offset: "0x0" }, { path: "x-1.1.0-full.bin", offset: "0x20000" }], full: "f.bin" } } },
   ];
   for (const json of bad) assert.throws(() => parseInstallIndex(json), Error, JSON.stringify(json));
 });

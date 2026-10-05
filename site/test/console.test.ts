@@ -30,7 +30,7 @@ function splitArgv(line: string): string[] | null {
     } else if (c === '"') {
       quoted = !quoted;
       inArg = true;
-    } else if (/\s/.test(c) && !quoted) {
+    } else if ((c === " " || c === "\t") && !quoted) {
       if (inArg) args.push(cur);
       cur = "";
       inArg = false;
@@ -88,6 +88,10 @@ test("quoteArg round-trips awkward SSIDs and passwords through the firmware's sp
   }
   assert.throws(() => quoteArg("line\nbreak"), RangeError);
   assert.throws(() => quoteArg("cr\rhere"), RangeError);
+  // The firmware's line buffer is a C string: a NUL would cut the line inside the quotes.
+  assert.throws(() => quoteArg("Ho\u0000me"), RangeError);
+  // Like the firmware's is_space, only space and tab separate arguments.
+  assert.deepEqual(splitArgv("a\vb\fc\u00a0d e\tf"), ["a\vb\fc\u00a0d", "e", "f"]);
 });
 
 test("setupCommands sends pair, then wifi, then host", () => {
@@ -99,6 +103,7 @@ test("setupCommands sends pair, then wifi, then host", () => {
   assert.deepEqual(setupCommands({ code: "123456", ssid: "Cafe", password: "", address: "http://192.168.1.20:8810/" })[2], "host 192.168.1.20:8810");
   assert.throws(() => setupCommands({ code: "12345", ssid: "Home", password: "" }), RangeError);
   assert.throws(() => setupCommands({ code: "123456", ssid: "Home", password: "short" }), RangeError);
+  assert.throws(() => setupCommands({ code: "123456", ssid: "Ho\u0000me", password: "" }), RangeError);
 });
 
 test("wifiProblem mirrors the console's wifi rules", () => {
@@ -111,6 +116,8 @@ test("wifiProblem mirrors the console's wifi rules", () => {
   assert.match(wifiProblem("", "") ?? "", /1 to 32/);
   assert.match(wifiProblem("ü".repeat(17), "") ?? "", /1 to 32/);
   assert.match(wifiProblem("Home", "pass\nword") ?? "", /line breaks/);
+  assert.match(wifiProblem("Ho\u0000me", "") ?? "", /NUL/);
+  assert.match(wifiProblem("Home", "pass\u0000word") ?? "", /NUL/);
 });
 
 test("pairing codes and host addresses are normalized from what people type", () => {
@@ -125,6 +132,11 @@ test("pairing codes and host addresses are normalized from what people type", ()
   assert.equal(normalizeHostAddress("192.168.1.20:70000"), null);
   assert.equal(normalizeHostAddress("my mac"), null);
   assert.equal(normalizeHostAddress("[fe80::1]:8810"), null);
+  // The firmware's `host` takes at most 57 bytes before the port, so "addr:port" fits 64.
+  assert.equal(normalizeHostAddress("a".repeat(57)), "a".repeat(57));
+  assert.equal(normalizeHostAddress(`${"a".repeat(57)}:65535`), `${"a".repeat(57)}:65535`);
+  assert.equal(normalizeHostAddress("a".repeat(58)), null);
+  assert.equal(normalizeHostAddress(`${"a".repeat(58)}.local`), null);
 });
 
 test("download-mode banners are recognised", () => {
