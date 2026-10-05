@@ -200,6 +200,14 @@ static void setup_body(void) {
   TEST_ASSERT_TRUE(shows("Omkar's computer"));
   TEST_ASSERT_TRUE(shows("gad_b18b86ce1389e46d"));
   assert_text_on_screen();
+  /* A new message opens on its first line, whatever the clock says: the page
+   * turns count from the moment the copy changed, not from t = 0. */
+  m.setup.step = UI_SETUP_PAIRING;
+  render(0);
+  m.setup.step = UI_SETUP_BAD_CODE;
+  render(UI_PAGE_ROTATE_MS + 100);
+  TEST_ASSERT_TRUE(shows("That code didn't work."));
+  TEST_ASSERT_TRUE_MESSAGE(label_y(label_with("That code didn't work.")) >= 0, "Setup opened on a later page");
 }
 static void test_setup(void) { each_board(setup_body); }
 
@@ -235,6 +243,14 @@ static void offline_body(void) {
   TEST_ASSERT_TRUE(shows("Omkar's computer"));
   TEST_ASSERT_TRUE(shows("Retrying in 2 s"));
   assert_text_on_screen();
+  /* a new reason opens on its first line too */
+  m.offline.reason = UI_OFFLINE_IN_USE_ELSEWHERE;
+  m.offline.retry_at_ms = 0;
+  render(100);
+  m.offline.reason = UI_OFFLINE_HOST_UNREACHABLE;
+  m.offline.retry_at_ms = UI_PAGE_ROTATE_MS + 9000;
+  render(UI_PAGE_ROTATE_MS + 100);
+  TEST_ASSERT_TRUE_MESSAGE(label_y(label_with("Can't reach Omkar's computer.")) >= 0, "Offline opened on a later page");
 }
 static void test_offline(void) { each_board(offline_body); }
 
@@ -248,6 +264,13 @@ static void listening_body(void) {
   render(56000);
   TEST_ASSERT_TRUE(shows("3"));
   assert_text_on_screen();
+  /* the whole ring is on the screen (its stroke is drawn inside its box) */
+  lv_area_t r;
+  lv_obj_get_coords(g_ui.ring, &r);
+  char msg[96];
+  snprintf(msg, sizeof msg, "%s: the ring at %d,%d-%d,%d leaves the screen", board->id, (int)r.x1, (int)r.y1, (int)r.x2,
+           (int)r.y2);
+  TEST_ASSERT_TRUE_MESSAGE(r.x1 >= 0 && r.y1 >= 0 && r.x2 < board->screen_w && r.y2 < board->screen_h, msg);
 }
 static void test_listening(void) { each_board(listening_body); }
 
@@ -453,8 +476,10 @@ static void toast_cover_body(void) {
 }
 static void test_toast_covers_what_is_under_it(void) { each_board(toast_cover_body); }
 
-/* ...and no line of text is left half under it: the caption either clears
- * the toast or steps aside while the toast shows. */
+/* ...and no line of text is left half under it: on the Maus screens the
+ * caption either clears the toast or steps aside while the toast shows; on
+ * the text screens (Ask, Card, Update) and on Listening the toast sits at the
+ * top, and the text starts under it. */
 static lv_area_t g_toast_area;
 
 static bool is_in_toast(const lv_obj_t *o) {
@@ -474,6 +499,14 @@ static void toast_overlap_cb(lv_obj_t *o, void *ctx) {
   TEST_ASSERT_FALSE_MESSAGE(clip(&a, &g_toast_area), msg);
 }
 
+/* The toast shows, and no visible label outside it overlaps it. */
+static void assert_toast_cuts_nothing(void) {
+  lv_obj_update_layout(lv_screen_active());
+  TEST_ASSERT_TRUE(shows("Morning brief is ready"));
+  lv_obj_get_coords(g_ui.toast, &g_toast_area);
+  walk(lv_screen_active(), toast_overlap_cb, NULL);
+}
+
 static void toast_no_cut_body(void) {
   m.maus = UI_MAUS_NOTIFYING;
   m.toast.visible = true;
@@ -483,20 +516,100 @@ static void toast_no_cut_body(void) {
   strcpy(m.host_name, "Omkar's computer");
   m.screen = UI_SCREEN_IDLE;
   render(100);
-  lv_obj_get_coords(g_ui.toast, &g_toast_area);
-  walk(lv_screen_active(), toast_overlap_cb, NULL);
+  assert_toast_cuts_nothing();
   m.screen = UI_SCREEN_OFFLINE;
   m.maus = UI_MAUS_SLEEPING;
   m.offline.reason = UI_OFFLINE_PROTOCOL;
   m.offline.retry_at_ms = 9000;
   render(200);
-  walk(lv_screen_active(), toast_overlap_cb, NULL);
-  TEST_ASSERT_TRUE(shows("Morning brief is ready"));
+  assert_toast_cuts_nothing();
   m.toast.visible = false; /* the caption comes back with the toast gone */
   render(300);
   TEST_ASSERT_TRUE(shows("MausBot didn't accept me."));
+  m.toast.visible = true;
+  /* Listening: the countdown digit stays readable */
+  m.screen = UI_SCREEN_LISTENING;
+  m.maus = UI_MAUS_NOTIFYING;
+  m.listening.countdown_s = 3;
+  render(400);
+  TEST_ASSERT_TRUE(shows("3"));
+  assert_toast_cuts_nothing();
+  /* Card with a long body: the title and the body start under the toast */
+  m.screen = UI_SCREEN_CARD;
+  m.maus = UI_MAUS_NONE;
+  strcpy(m.card.title, "Build finished");
+  for (int i = 0; i < 30; i++) strcat(m.card.body, "All 312 tests passed. ");
+  render(500);
+  TEST_ASSERT_TRUE(shows("Build finished"));
+  TEST_ASSERT_TRUE(shows("All 312 tests passed."));
+  assert_toast_cuts_nothing();
+  /* Ask: what is being asked stays readable above the options */
+  fill_ask(2, false);
+  render(600);
+  TEST_ASSERT_TRUE(shows("Run shell command?"));
+  TEST_ASSERT_TRUE(shows("Allow"));
+  assert_toast_cuts_nothing();
+  fill_ask(3, true);
+  render(700);
+  TEST_ASSERT_TRUE(shows("Which room?"));
+  assert_toast_cuts_nothing();
+  /* Update */
+  m.screen = UI_SCREEN_UPDATE;
+  m.maus = UI_MAUS_NONE;
+  m.update.phase = UI_UPDATE_RECEIVING;
+  m.update.pct = 42;
+  render(800);
+  TEST_ASSERT_TRUE(shows("Updating" UI_ELLIPSIS " 42%"));
+  assert_toast_cuts_nothing();
+  /* the card comes back where it was with the toast gone */
+  m.screen = UI_SCREEN_CARD;
+  m.toast.visible = false;
+  render(900);
+  lv_obj_update_layout(lv_screen_active());
+  TEST_ASSERT_EQUAL_INT32(g_ui.mt.safe.y, lv_obj_get_y(label_with("Build finished")));
 }
 static void test_toast_never_cuts_text(void) { each_board(toast_no_cut_body); }
+
+/* Core hit-tests the ask's option rects whatever is drawn over them
+ * (display_ask_input answers on TOUCH_UP before a toast is dismissed), so a
+ * toast must never cover an option: a tap on it would answer the hidden
+ * option. */
+static void assert_options_clear_of_toast(void) {
+  lv_obj_update_layout(lv_screen_active());
+  TEST_ASSERT_TRUE(shows("Morning brief is ready"));
+  lv_area_t t;
+  lv_obj_get_coords(g_ui.toast, &t);
+  char msg[160];
+  for (int i = 0; i < UI_ASK_OPTIONS_MAX; i++) {
+    if (!visible(g_ui.opt[i])) continue;
+    lv_area_t a;
+    if (!shown_area(g_ui.opt[i], &a)) continue;
+    snprintf(msg, sizeof msg, "%s: option %d at %d,%d-%d,%d is under the toast at %d,%d-%d,%d", board->id, i, (int)a.x1,
+             (int)a.y1, (int)a.x2, (int)a.y2, (int)t.x1, (int)t.y1, (int)t.x2, (int)t.y2);
+    TEST_ASSERT_FALSE_MESSAGE(clip(&a, &t), msg);
+  }
+  /* and none of the rects core hit-tests on touch boards */
+  if (!(board->input_mask & GADGET_INPUT_TOUCH) || !m.ask.answerable) return;
+  for (uint8_t i = 0; i < m.ask.n_options; i++) {
+    gadget_rect_t r = m.ask.options[i].rect;
+    lv_area_t a = {r.x, r.y, r.x + r.w - 1, r.y + r.h - 1};
+    snprintf(msg, sizeof msg, "%s: the hit rect of option %d is under the toast", board->id, (int)i);
+    TEST_ASSERT_FALSE_MESSAGE(clip(&a, &t), msg);
+  }
+}
+
+static void toast_ask_body(void) {
+  m.toast.visible = true;
+  strcpy(m.toast.bot_name, "Jev");
+  strcpy(m.toast.text, "Morning brief is ready: 3 meetings, 2 reviews waiting.");
+  fill_ask(2, false);
+  render(1000);
+  assert_options_clear_of_toast();
+  fill_ask(4, true);
+  render(2000);
+  assert_options_clear_of_toast();
+}
+static void test_toast_never_hides_ask_options(void) { each_board(toast_ask_body); }
 
 /* ---- Review Focus ------------------------------------------------------- */
 
@@ -729,6 +842,7 @@ int main(void) {
   RUN_TEST(test_toast);
   RUN_TEST(test_toast_covers_what_is_under_it);
   RUN_TEST(test_toast_never_cuts_text);
+  RUN_TEST(test_toast_never_hides_ask_options);
   RUN_TEST(test_long_unbroken_text_stays_on_screen);
   RUN_TEST(test_out_of_range_model_values_do_not_crash);
   RUN_TEST(test_ask_unlocks_without_a_model_change);

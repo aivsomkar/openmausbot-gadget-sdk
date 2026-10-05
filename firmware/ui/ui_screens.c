@@ -152,15 +152,32 @@ static void show_caption(const char *text, const lv_font_t *f, uint32_t color, l
   ui_pager_set_hidden(&g_ui.caption, false);
 }
 
-/* Title at the top of the safe area (≤ 2 lines); returns its bottom edge. */
-static int32_t place_title(const char *text) {
+/* The toast sits at the top on the text screens, where the bottom of the
+ * screen holds the ask's options (core hit-tests them whatever is drawn over
+ * them) or the end of a card, and on Listening, where it covers the Maus
+ * rather than the countdown digit. Elsewhere it sits at the bottom. */
+static bool toast_on_top(ui_screen_t s) {
+  return s == UI_SCREEN_ASK || s == UI_SCREEN_CARD || s == UI_SCREEN_UPDATE || s == UI_SCREEN_LISTENING;
+}
+
+/* Top edge of the text on the text screens: the safe area, or under the
+ * toast while it shows there, so no line is left half under it. */
+static int32_t text_top(const ui_model_t *m) {
+  const ui_metrics_t *mt = &g_ui.mt;
+  if (!m->toast.visible) return mt->safe.y;
+  int32_t y = mt->toast_top.y + mt->toast_top.h + mt->pad;
+  return y > mt->safe.y ? y : mt->safe.y;
+}
+
+/* Title from y (≤ 2 lines); returns its bottom edge. */
+static int32_t place_title(const char *text, int32_t y) {
   const gadget_rect_t s = g_ui.mt.safe;
   const lv_font_t *f = g_ui.mt.font_title;
   lv_label_set_text(g_ui.title, text);
-  lv_obj_set_pos(g_ui.title, s.x, s.y);
+  lv_obj_set_pos(g_ui.title, s.x, y);
   lv_obj_set_size(g_ui.title, s.w, text_h(text, f, s.w, 2));
   ui_set_hidden(g_ui.title, false);
-  return s.y + text_h(text, f, s.w, 2);
+  return y + text_h(text, f, s.w, 2);
 }
 
 /* Body between y0 and y1, whole lines only. */
@@ -241,7 +258,7 @@ static int32_t place_options(const ui_model_t *m) {
 
 static void apply_ask(const ui_model_t *m) {
   int32_t pad = g_ui.mt.pad;
-  int32_t y = place_title(m->ask.title) + pad;
+  int32_t y = place_title(m->ask.title, text_top(m)) + pad;
   int32_t bottom = place_options(m) - pad;
   place_body(m->ask.body, y, bottom);
   g_ui.ask_locked = -1;
@@ -249,7 +266,7 @@ static void apply_ask(const ui_model_t *m) {
 
 static void apply_card(const ui_model_t *m) {
   const gadget_rect_t s = g_ui.mt.safe;
-  int32_t y = place_title(m->card.title) + g_ui.mt.pad;
+  int32_t y = place_title(m->card.title, text_top(m)) + g_ui.mt.pad;
   place_body(m->card.body, y, s.y + s.h);
 }
 
@@ -260,6 +277,7 @@ static void apply_update(const ui_model_t *m) {
   int32_t th = line_h(g_ui.mt.font_title);
   int32_t bar_h = g_ui.mt.large ? 12 : 8;
   int32_t y = s.y + (s.h - th - g_ui.mt.pad - bar_h) / 2;
+  if (y < text_top(m)) y = text_top(m);
   lv_label_set_text(g_ui.title, text);
   lv_obj_set_size(g_ui.title, s.w, th);
   lv_obj_set_pos(g_ui.title, s.x, y);
@@ -310,13 +328,26 @@ static void apply_toast(const ui_model_t *m) {
     ui_set_hidden(g_ui.toast, true);
     return;
   }
+  const bool top = toast_on_top(m->screen);
+  const gadget_rect_t r = top ? g_ui.mt.toast_top : g_ui.mt.toast;
+  lv_obj_set_pos(g_ui.toast, r.x, r.y);
   lv_label_set_text(g_ui.toast_name, m->toast.bot_name);
   lv_label_set_text(g_ui.toast_text, m->toast.text);
   ui_set_hidden(g_ui.toast, false);
-  /* On the smaller boards the toast covers part of the caption: the caption
-   * steps aside while the toast shows instead of leaving lines half hidden. */
-  if (!ui_is_hidden(g_ui.caption.box) && g_ui.mt.toast.y < ui_pager_bottom(&g_ui.caption)) {
+  /* At the top the text screens start under the toast (text_top()). At the
+   * bottom, on the smaller boards, the toast covers part of the caption: the
+   * caption steps aside while the toast shows instead of leaving lines half
+   * hidden. */
+  if (!top && !ui_is_hidden(g_ui.caption.box) && r.y < ui_pager_bottom(&g_ui.caption)) {
     ui_pager_set_hidden(&g_ui.caption, true);
+  }
+}
+
+/* Setup and Offline: restart the page turns when the copy changes. */
+static void caption_changed(ui_screen_t prev, const ui_model_t *m, const char *caption) {
+  if (prev != m->screen || strcmp(caption, g_ui.caption_key) != 0) {
+    g_ui.caption_t0 = m->now_ms;
+    snprintf(g_ui.caption_key, sizeof g_ui.caption_key, "%s", caption);
   }
 }
 
@@ -324,6 +355,7 @@ void ui_screens_apply(const ui_model_t *m) {
   ui_metrics_t *mt = &g_ui.mt;
   ui_copy_t copy;
   char line[128];
+  const ui_screen_t prev = g_ui.screen;
   hide_all();
   g_ui.applies++;
   g_ui.screen = m->screen;
@@ -337,12 +369,14 @@ void ui_screens_apply(const ui_model_t *m) {
     ui_copy_setup(m, &copy);
     show_caption(copy.caption, mt->font_small, UI_COLOR_INK, LV_TEXT_ALIGN_CENTER, copy.host, copy.status, mt->font_tiny,
                  UI_COLOR_DIM);
+    caption_changed(prev, m, copy.caption);
     break;
   case UI_SCREEN_OFFLINE:
     ui_copy_offline(m, &copy);
     show_caption(copy.caption, mt->font_small, UI_COLOR_INK, LV_TEXT_ALIGN_CENTER, copy.host, copy.status, mt->font_tiny,
                  UI_COLOR_MUTE);
     snprintf(g_ui.status, sizeof g_ui.status, "%s", copy.status);
+    caption_changed(prev, m, copy.caption);
     break;
   case UI_SCREEN_IDLE:
     ui_copy_idle(m, line, sizeof line);
@@ -384,10 +418,15 @@ void ui_screens_apply(const ui_model_t *m) {
   apply_toast(m);
 }
 
+/* Time since the Setup or Offline copy appeared (0 if the clock went back). */
+static uint64_t caption_age(const ui_model_t *m) {
+  return m->now_ms > g_ui.caption_t0 ? m->now_ms - g_ui.caption_t0 : 0;
+}
+
 void ui_screens_apply_time(const ui_model_t *m) {
   switch (g_ui.screen) {
   case UI_SCREEN_SETUP:
-    ui_pager_show_rotating(&g_ui.caption, m->now_ms);
+    ui_pager_show_rotating(&g_ui.caption, caption_age(m));
     break;
   case UI_SCREEN_OFFLINE: {
     ui_copy_t copy;
@@ -396,7 +435,7 @@ void ui_screens_apply_time(const ui_model_t *m) {
       lv_label_set_text(g_ui.caption.status, copy.status);
       snprintf(g_ui.status, sizeof g_ui.status, "%s", copy.status);
     }
-    ui_pager_show_rotating(&g_ui.caption, m->now_ms);
+    ui_pager_show_rotating(&g_ui.caption, caption_age(m));
     break;
   }
   case UI_SCREEN_LISTENING: {

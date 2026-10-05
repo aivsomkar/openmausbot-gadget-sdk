@@ -9,8 +9,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-# P2b adds firmware/ui and the LVGL/SDL simulator display behind this option
-# (and flips its default to ON); until then it changes nothing.
+# firmware/ui and the LVGL/SDL simulator display (plan P2b), on by default
+# since P2b; OFF builds core and the simulator without the LVGL UI.
 option(GADGET_WITH_LVGL "Build the LVGL UI and the LVGL/SDL simulator display (plan P2b)" ON)
 option(GADGET_BUILD_SIM "Build the gadget-sim simulator" ON)
 option(GADGET_BUILD_TESTS "Build the C tests" ON)

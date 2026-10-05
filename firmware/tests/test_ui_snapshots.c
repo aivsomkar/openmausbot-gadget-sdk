@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Golden PNGs of the screens a scripted host cannot reach without knowing
- * the gadget's random turn id (thinking, speaking, reply), plus every copy
- * variant the simulator scripts skip. Drawn by the real UI through the
- * simulator's headless display (round mask included) on the virtual clock
- * with seed 1. Run from the repository root: argv[1] = board id. */
+/* Golden PNGs of the turn screens (thinking, speaking, reply), kept as
+ * model fixtures by choice (net_text's ${turn}, contract 2.16 D27, now lets a
+ * script reach them end to end), plus every copy variant the simulator
+ * scripts skip. Drawn by the real UI through the simulator's headless display
+ * (round mask included) on the virtual clock with seed 1. Run from the
+ * repository root: argv[1] = board id. */
 #include <stdio.h>
 #include <string.h>
 

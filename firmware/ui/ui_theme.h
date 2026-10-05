@@ -24,7 +24,10 @@ typedef struct {
   gadget_rect_t caption;  /* text under (or beside) the Maus */
   gadget_rect_t status;   /* one status line (device id, retry, working); bottom-aligned in it */
   gadget_rect_t safe;     /* ui_safe_area(): text screens (ask, card, update) */
-  gadget_rect_t toast;    /* post toast overlay */
+  gadget_rect_t toast;    /* post toast overlay on the Maus screens, at the bottom */
+  gadget_rect_t toast_top; /* the same toast (same size) at the top: on Ask (clear of the option
+                            * rects core hit-tests), Card, Update and Listening (over the Maus,
+                            * not the countdown digit) */
   int16_t ring_d;         /* listening ring diameter, centred on the Maus body */
 } ui_metrics_t;
 

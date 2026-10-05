@@ -4651,7 +4651,7 @@ cmake --build build/host -j10 --target test_ui_lv_compat test_ui_art test_ui_cop
 ctest --test-dir build/host --output-on-failure -R '^ui\.'
 ```
 
-Expected: `ui.screens` reports `20 Tests 0 Failures`, including `test_a8_eyes_draw_white:PASS` (the simulator half of spec §6.5's open item: an opaque A8 eye pixel lands as `0xFFFF`); every `ui.*` test passes. If `test_a8_eyes_draw_white` fails with `Expected 0xFFFF Was 0x0000`, stop: the recolor path changed in LVGL; switch `eye_format` to `RGB565A8` per `firmware/ui/README.md` and report it.
+Expected: `ui.screens` reports `23 Tests 0 Failures` (20 as first written; Contract deviations 5 adds three), including `test_a8_eyes_draw_white:PASS` (the simulator half of spec §6.5's open item: an opaque A8 eye pixel lands as `0xFFFF`); every `ui.*` test passes. If `test_a8_eyes_draw_white` fails with `Expected 0xFFFF Was 0x0000`, stop: the recolor path changed in LVGL; switch `eye_format` to `RGB565A8` per `firmware/ui/README.md` and report it.
 
 - [ ] **Step 9: Commit**
 
@@ -5702,7 +5702,7 @@ git commit -m "feat(sim): LVGL display, SDL window mode and SDL audio" -m "Co-Au
 - Consumes: `gadget_sim_lvgl` (headless display with the round mask, `sim_display_snapshot`), `gadget_ui`.
 - Produces: CTest `ui.snap.fixtures.<board>` (label `snapshot`, run from the repository root, argv[1] = board id); goldens `fx_thinking`, `fx_thinking_working`, `fx_speaking_1..3`, `fx_speaking_page2`, `fx_reply`, `fx_reply_failed`, `fx_setup_need_wifi`, `fx_setup_host_not_found`, `fx_offline_wifi_connecting`, `fx_offline_wifi_failed`, `fx_offline_looking`, `fx_offline_protocol`, `fx_update_verifying`, `fx_update_restarting`, `fx_ask_chosen`, `fx_battery_charging`.
 
-Why fixtures: a scripted host cannot answer a turn because the gadget picks its turn id with `hal_crypto_random` (contract §2.12), so Thinking, Speaking and Reply are drawn here from model fixtures, through the same headless display, seed 1 and 10 ms virtual steps. Setup "need Wi-Fi" is a fixture too: the simulator always reports Wi-Fi connected (contract §2.5), so core starts a fresh simulator at "need code" and no script can reach it.
+Why fixtures: a scripted host cannot answer a turn because the gadget picks its turn id with `hal_crypto_random` (contract §2.12), so Thinking, Speaking and Reply are drawn here from model fixtures, through the same headless display, seed 1 and 10 ms virtual steps. (Since contract D27, `net_text` replaces `${turn}` with the gadget's last turn id, so a script can now reach these screens; the fixtures are kept by choice, Contract deviations 2.) Setup "need Wi-Fi" is a fixture too: the simulator always reports Wi-Fi connected (contract §2.5), so core starts a fresh simulator at "need code" and no script can reach it.
 
 - [ ] **Step 1: Write the test and register it**
 
@@ -5710,11 +5710,12 @@ Why fixtures: a scripted host cannot answer a turn because the gadget picks its 
 
 ```c
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Golden PNGs of the screens a scripted host cannot reach without knowing
- * the gadget's random turn id (thinking, speaking, reply), plus every copy
- * variant the simulator scripts skip. Drawn by the real UI through the
- * simulator's headless display (round mask included) on the virtual clock
- * with seed 1. Run from the repository root: argv[1] = board id. */
+/* Golden PNGs of the turn screens (thinking, speaking, reply), kept as
+ * model fixtures by choice (net_text's ${turn}, contract 2.16 D27, now lets a
+ * script reach them end to end), plus every copy variant the simulator
+ * scripts skip. Drawn by the real UI through the simulator's headless display
+ * (round mask included) on the virtual clock with seed 1. Run from the
+ * repository root: argv[1] = board id. */
 #include <stdio.h>
 #include <string.h>
 
@@ -6009,9 +6010,10 @@ The update scripts carry real offers: a 100-byte image (bytes `0x00..0x63`, SHA-
 # CTest ui.snap.<board> runs it for amoled-175c, lcd-154 and devkit from a
 # fresh --state-dir holding only the RFC key (device id gad_b18b86ce1389e46d);
 # goldens live in firmware/tests/snapshots/<board>/.
-# Turn screens (thinking, speaking, reply) need the gadget's random turn id,
-# and Setup "need Wi-Fi" never shows (the simulator always has Wi-Fi), so
-# test_ui_snapshots draws those (fx_*.png) instead.
+# Turn screens (thinking, speaking, reply) are drawn by test_ui_snapshots
+# from model fixtures (fx_*.png), by choice: net_text's ${turn} (contract
+# 2.16, D27) now lets a script reach them end to end. Setup "need Wi-Fi"
+# never shows here (the simulator always has Wi-Fi), so it is a fixture too.
 # After an `error` frame the gadget closes the connection itself, so the
 # script sends no net_close there.
 # The script sends an unknown op ("x-keepalive") before long waits: any
@@ -6589,9 +6591,14 @@ Do not push. Report the branch, the commit list, and the hand-off notes below.
 ## Contract deviations
 
 1. **Licence header of the generated font files.** Contract §2.1 asks for `SPDX-License-Identifier: Apache-2.0` on every source file. `firmware/ui/fonts/font_latin1_*.c` are bitmaps derived from Montserrat, which is OFL-1.1, so `fonts.ts` writes `/* SPDX-License-Identifier: OFL-1.1 */` on those six files only (`ui_fonts.h` keeps Apache-2.0). Proposed change: contract §2.1 adds "except generated font files, which carry `OFL-1.1`". If the review keeps Apache-2.0, change the first header line in `tools/art/fonts.ts` and rerun `npm run fonts`; nothing else depends on it.
-2. **Gap, no pinned item changed: turn screens cannot be scripted.** Contract D4 says the `--host script` commands make UI snapshots deterministic without a socket, but `heard`, `reply`, `speak.*` and `done` need the gadget's turn id, which contract §2.12 pins to `hal_crypto_random`. P2b covers Thinking, Speaking and Reply with fixture snapshots (Task 7) instead. Optional proposal for P2a: let `net_text` replace `$turn` with the `turn` of the last `voice.begin`/`say` the gadget sent, so these screens can also be snapshotted end to end.
+2. **Turn screens are fixtures by choice (closed by contract D27).** When this plan was written, `heard`, `reply`, `speak.*` and `done` needed the gadget's turn id, which contract §2.12 pins to `hal_crypto_random`, so no `--host script` run could reach Thinking, Speaking or Reply. Contract D27 (P2a deviation 7) has since made `net_text` replace every `${turn}` with the `turn` of the last `voice.begin` or `say` the gadget sent (`firmware/ports/sim/sim_script.c`), so a script can now reach these screens end to end. P2b keeps their fixture snapshots (Task 7) by choice: they pin each speaking level and the second page without timing a stream. The comments in `test_ui_snapshots.c` and `snap_screens.txt` say so.
 3. **Clarification, no pinned shape changed: window-mode input follows the board's `input_mask`.** Contract §2.16 says the SDL filter posts Space as TALK, Esc as CANCEL and the mouse as touch; contract §2.5 says the board's `input_mask` says which input sources exist. P2b posts each only where the board has that source: Esc posts nothing on amoled-175 (no CANCEL), and the mouse posts nothing on lcd-154 and devkit (no TOUCH), so the window behaves like the device. `test_escape_is_cancel_only_on_boards_with_cancel`, `test_mouse_does_nothing_on_button_boards` and Task 6 Step 8 check it. Proposed change: §2.16 adds "for the input sources in the board's `input_mask`". If the review prefers posting unconditionally, drop the two `inputs &` conditions in `filter()` and those two tests.
 4. **P2a's `firmware/CMakeLists.txt` beyond §5.1's insertion points.** If P2a ships a placeholder `if(GADGET_WITH_LVGL)` / `message(FATAL_ERROR "GADGET_WITH_LVGL needs firmware/ui, which plan P2b adds. ...")` / `endif()` before `include(cmake/deps.cmake)`, every LVGL configure in this plan stops ("Configuring incomplete, errors occurred!", reproduced in review). Task 3 Step 5 deletes exactly that guard with one `perl` line (a no-op when it is absent) before adding `add_subdirectory(ui)`. Proposed change: contract §5.1 lists "remove the `GADGET_WITH_LVGL` placeholder guard" among P2b's edits to that file, or P2a agrees not to ship the guard.
+5. **The post toast, found in review of Tasks 5–8 (commit `736042e` and its follow-up `fix(P2b): address review of tasks 5, 6, 7, 8`).** Task 5 drew the toast 40 % translucent at the bottom of every screen. Two things were wrong with that. On the smaller boards the caption and the Maus showed through it. On the round touch boards it sat over the ask's option buttons, and core still hit-tests their rects on `TOUCH_UP` (`display_ask_input()` → `ui_hit_test()`), so a tap meant to dismiss the toast answered the option under it. What changed:
+   - `736042e`: the toast is opaque (the dim colour mixed 40 % onto black, `LV_OPA_COVER`), and on the Maus screens the caption steps aside (hidden) while a toast covers part of it. `ui_pager.h` gains `int32_t ui_pager_bottom(const ui_pager_t *)` (the lowest y the caption shows) for that check. Two new tests cover it: `test_toast_covers_what_is_under_it` and `test_toast_never_cuts_text` (Idle and Offline).
+   - Follow-up: `ui_metrics_t` gains `gadget_rect_t toast_top`. On round boards it is `ui_rect_in_circle(w, 46, 140, 10)`, otherwise `{8, 8, w - 16, 60}`, the same size as `toast`. The toast sits there on Ask, Card, Update and Listening, and at the bottom on the other screens. On Ask, Card and Update the title, body and update line start under it (`text_top()` in `ui_screens.c`). The reviewer's alternative was to hide each label the toast cuts, as the caption is hidden; starting under it keeps the question being asked readable above Allow/Deny, and every board still has room for the title and some body. On Listening the toast covers the Maus, not the countdown digit. With the toast gone the text returns to the top of the safe area. `test_toast_never_cuts_text` now also covers Listening (countdown 3), Card (long body), Ask (2 and 3 options) and Update. A new test, `test_toast_never_hides_ask_options`, checks every board with 2 and 4 options: no drawn option, and on touch boards no hit rect, meets the toast.
+   - Also in the follow-up, two layout fixes. (a) Setup and Offline pages turned on absolute time (`now_ms / UI_PAGE_ROTATE_MS`), so a new message could open on a middle page. On lcd-154 the scripted goldens `setup_bad_code`, `setup_device_limit` and `offline_unreachable` (and `setup_device_limit` on amoled-175c) opened mid-message. `ui_state_t` gains `caption_t0` and `caption_key`, and pages now count from the moment the screen or its caption changed (`ui_pager_show_rotating(p, age_ms)`). `test_setup` and `test_offline` check that a new message opens on its first line. (b) On devkit the listening ring reached x = −1. The landscape Maus now sits at `max(16, ring_d / 2 − mw / 2 + 2)`, 19 px for s150, and `test_listening` checks that the ring stays on the screen. The devkit goldens, the three lcd-154 goldens and amoled-175c's `setup_device_limit` were regenerated and looked at; two regenerations were byte-identical.
+   - Counts: `ui.screens` had 20 tests as written, 22 after `736042e` and 23 after the follow-up. No pinned item changes: toast placement is P2b-local layout. Contract §2.7 says only "A post toast overlays any screen", and it still does.
 
 Additions (allowed by contract §0 item 3, read by no other plan): CTest names `ui.<area>`, `sim.<area>`, `sim.audio_sdl.no_device`, `sim.audio_sdl.open_fails`, `sim.window_smoke`, `ui.snap.fixtures.<board>`, `ui.snap.<board>.update` and the `.fresh` fixtures (`fresh_dir.cmake` with its optional `DEV_KEY`); `ui_lv_requirements.h` also checks LVGL defaults the UI needs (`LV_DRAW_SW_COMPLEX`, label, image, arc, bar) and that both image caches are off; `UI_MODEL_COPY_ATTR` (render-cache placement hook for P2c); `firmware/ui/README.md`; the P2b-local `TALK`/`CANCEL` hints under the ask buttons on button boards; the host-name line on Setup and Offline (spec §5.5; it shows `host_name` itself and adds no English, so contract §2.15's copy table is unchanged).
 
@@ -6601,4 +6608,4 @@ Additions (allowed by contract §0 item 3, read by no other plan): CTest names `
 - **Placeholder scan:** every code step carries the complete file or the exact block to append; no "TBD", no "similar to Task N"; generated files (art, fonts, PNGs) come from commands with stated expected output.
 - **Type consistency:** `maus_art_t`/`maus_state_def_t`/`maus_layer_t` come verbatim from the contract header; `ui_copy_t` (with `host`), `maus_frame_t`, `maus_engine_t`, `ui_pager_t` (with `sub`), `ui_metrics_t`, `ui_state_t` (with `applies`) are defined once and used with the same names in later tasks; every `ui_pager_set`/`show_caption` call passes the `sub` argument; CMake targets `gadget_ui`, `gadget_sim_lvgl`, `lvgl::lvgl`, `SDL2::SDL2`, `unity::framework`, `gadget_core`, `gadget-sim` match contract §2.18.
 - **Review Focus:** each of the six lines has its tests in the owning task (Tasks 4, 5 and 6), named in the list, and each new test was run; the render-cache and mic-frame tests were also seen failing against the code they guard.
-- **Counts:** `ui.screens` 20, `ui.copy` 9, `sim.sdl` 5, `sim.audio_sdl` 5; 18 `fx_*.png` + 16 scripted + 1 update = 35 goldens per board; 15 tests labelled `snapshot`; Node tests 22.
+- **Counts:** `ui.screens` 23 (20 as first written; Contract deviations 5), `ui.copy` 9, `sim.sdl` 5, `sim.audio_sdl` 5; 18 `fx_*.png` + 16 scripted + 1 update = 35 goldens per board; 15 tests labelled `snapshot`; Node tests 22.

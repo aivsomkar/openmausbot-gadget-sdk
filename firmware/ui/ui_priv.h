@@ -50,6 +50,10 @@ typedef struct {
   int16_t mic_level;  /* -1 = ring width not drawn yet */
   int16_t ask_locked; /* -1 unknown, 0 unlocked, 1 locked */
   char status[UI_COPY_MAX]; /* last status text drawn (retry countdown) */
+  /* Setup and Offline pages turn every UI_PAGE_ROTATE_MS from the moment
+   * their copy appeared, so a new message opens on its first line. */
+  uint64_t caption_t0;
+  char caption_key[UI_COPY_MAX]; /* the copy caption_t0 belongs to; "" on other screens */
 } ui_state_t;
 
 extern ui_state_t g_ui;

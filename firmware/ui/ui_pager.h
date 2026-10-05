@@ -36,7 +36,8 @@ void ui_pager_set(ui_pager_t *p, const char *text, const lv_font_t *font, uint32
                   const char *sub, const char *status, const lv_font_t *status_font, uint32_t status_color);
 uint16_t ui_pager_pages(const ui_pager_t *p);
 void ui_pager_show_page(ui_pager_t *p, uint16_t page);
-void ui_pager_show_rotating(ui_pager_t *p, uint64_t now_ms);
+/* age_ms: time since the text was set; page n shows from n * UI_PAGE_ROTATE_MS. */
+void ui_pager_show_rotating(ui_pager_t *p, uint64_t age_ms);
 void ui_pager_show_tail(ui_pager_t *p);
 /* total_ms 0 = unknown: UI_MS_PER_LINE per line of a page. */
 void ui_pager_show_progress(ui_pager_t *p, uint32_t elapsed_ms, uint32_t total_ms);

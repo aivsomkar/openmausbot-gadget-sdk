@@ -4,9 +4,10 @@
 # CTest ui.snap.<board> runs it for amoled-175c, lcd-154 and devkit from a
 # fresh --state-dir holding only the RFC key (device id gad_b18b86ce1389e46d);
 # goldens live in firmware/tests/snapshots/<board>/.
-# Turn screens (thinking, speaking, reply) need the gadget's random turn id,
-# and Setup "need Wi-Fi" never shows (the simulator always has Wi-Fi), so
-# test_ui_snapshots draws those (fx_*.png) instead.
+# Turn screens (thinking, speaking, reply) are drawn by test_ui_snapshots
+# from model fixtures (fx_*.png), by choice: net_text's ${turn} (contract
+# 2.16, D27) now lets a script reach them end to end. Setup "need Wi-Fi"
+# never shows here (the simulator always has Wi-Fi), so it is a fixture too.
 # After an `error` frame the gadget closes the connection itself, so the
 # script sends no net_close there.
 # The script sends an unknown op ("x-keepalive") before long waits: any

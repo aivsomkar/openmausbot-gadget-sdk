@@ -89,9 +89,9 @@ void ui_pager_show_page(ui_pager_t *p, uint16_t page) {
   place(p, (int32_t)page * p->lines_per_page);
 }
 
-void ui_pager_show_rotating(ui_pager_t *p, uint64_t now_ms) {
+void ui_pager_show_rotating(ui_pager_t *p, uint64_t age_ms) {
   uint16_t n = ui_pager_pages(p);
-  ui_pager_show_page(p, (uint16_t)((now_ms / UI_PAGE_ROTATE_MS) % n));
+  ui_pager_show_page(p, (uint16_t)((age_ms / UI_PAGE_ROTATE_MS) % n));
 }
 
 void ui_pager_show_tail(ui_pager_t *p) {
