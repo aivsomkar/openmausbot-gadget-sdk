@@ -1,0 +1,14 @@
+## SPDX-License-Identifier: Apache-2.0
+## Managed components for the gadget firmware (contract §1.4). Fetched at
+## build time under their own licenses; never copied into this repository.
+## No Waveshare BSP and no esp_lvgl_port (single-threaded LVGL, spec §5.1).
+dependencies:
+  idf: ">=6.0.3,<6.1"
+  lvgl/lvgl: "9.6.0~1"
+  espressif/cjson: "^1.7.19"
+  espressif/esp_websocket_client: "^1.8.0"
+  espressif/mdns: "^1.14.0"
+  espressif/esp_codec_dev: "^1.6.2"
+  espressif/esp_lcd_co5300: "^2.2.0"
+  waveshare/esp_lcd_touch_cst9217: "^2.0.0"
+  espressif/esp_lcd_touch: "^1.2.1"

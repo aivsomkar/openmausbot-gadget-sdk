@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+# Opt-in NVS encryption (spec §4.2, A16). Applied only when building with
+# -D GADGET_NVS_ENCRYPT=1, in its own build directory.
+#
+# WARNING: on its first boot the firmware generates an HMAC key and burns it
+# into eFuse key block 5. That is permanent. Afterwards a build without
+# these options cannot read this board's NVS: NVS is erased, the identity
+# key is lost and the gadget has to pair again (remove the old entry in
+# MausBot -> Settings -> Remote access).
+CONFIG_GADGET_NVS_ENCRYPT=y
+CONFIG_NVS_ENCRYPTION=y
+CONFIG_NVS_SEC_KEY_PROTECT_USING_HMAC=y
+CONFIG_NVS_SEC_HMAC_EFUSE_KEY_ID=5

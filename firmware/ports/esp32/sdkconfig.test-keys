@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+# Bench OTA tests only (docs/hardware-checklist.md): tools/fake-host, or
+# MausBot's Update button against a local, never-published dev release.
+# Applied only with -D GADGET_TEST_KEYS=1, in its own build directory. Such an
+# image trusts the test key t1, whose private half is committed in keys/:
+# never publish it and never leave it on a gadget you use. Release CI rejects
+# a key table with anything but r* keys.
+CONFIG_GADGET_TEST_KEYS=y

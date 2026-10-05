@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+menu "OpenMausBot gadget"
+
+    config GADGET_BOARD_ID
+        string "Board id"
+        default ""
+        help
+            Set by boards/<id>/sdkconfig.defaults; must equal the GADGET_BOARD
+            the project was configured with and a row of core's board table.
+
+    config GADGET_ART_PROFILE
+        string "Maus art profile (s240 or s150)"
+        default "s240"
+        help
+            Which generated art profile firmware/ui compiles. Set by
+            boards/<id>/sdkconfig.defaults from the board's art profile.
+
+    config GADGET_TEST_KEYS
+        bool "Trust the test signing key t1 for OTA (never in board builds)"
+        default n
+        help
+            Compiles the test key t1 into core's key table. Only the simulator
+            and tests use it. Every board's sdkconfig.defaults keeps it off and
+            release CI checks that the shipped key table holds only r* keys.
+
+    config GADGET_NVS_ENCRYPT
+        bool "Encrypt NVS with an HMAC key in eFuse block 5 (permanent)"
+        default n
+        help
+            Encrypts the NVS partition (identity key, Wi-Fi, pairing) with
+            ESP-IDF's HMAC scheme. On first boot this BURNS an HMAC key into
+            eFuse key block 5, which cannot be undone; a build without this
+            option can no longer read the board's NVS. Needs NVS_ENCRYPTION,
+            NVS_SEC_KEY_PROTECT_USING_HMAC and NVS_SEC_HMAC_EFUSE_KEY_ID=5:
+            build with -D GADGET_NVS_ENCRYPT=1 to apply sdkconfig.nvs-encrypt.
+
+endmenu

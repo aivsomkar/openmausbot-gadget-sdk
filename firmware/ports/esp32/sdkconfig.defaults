@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: Apache-2.0
+# Shared ESP-IDF defaults for every board. CMakeLists.txt applies
+# boards/<board>/sdkconfig.defaults after this file, so a board file wins.
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash: one 16 MB layout (boards set CONFIG_ESPTOOLPY_FLASHSIZE_16MB)
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+
+# OTA: app rollback on, anti-rollback never (spec §4.8, contract §2.17)
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK is not set
+
+# CPU, RTOS and the 8 MB octal PSRAM every board carries
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_FREERTOS_HZ=1000
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# Code keeps running from PSRAM while OTA and NVS write flash
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+
+# Console on the native USB-Serial-JTAG port (installer, idf.py monitor)
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Crash dumps go to the coredump partition
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+
+# PSA crypto: deterministic ECDSA over P-256 (IDF defaults, pinned)
+CONFIG_MBEDTLS_ECDSA_DETERMINISTIC=y
+CONFIG_MBEDTLS_ECP_DP_SECP256R1_ENABLED=y
+
+# esp_websocket_client: sends do not wait behind receives
+CONFIG_ESP_WS_CLIENT_SEPARATE_TX_LOCK=y
+
+# LVGL 9.6 on the device, from Kconfig only: firmware/ui/lv_conf.h is the
+# simulator's and is on the ui include path, so it must never be read here.
+# firmware/ui/ui_lv_requirements.h checks both builds.
+CONFIG_LV_CONF_SKIP=y
+CONFIG_LV_COLOR_FORMAT_RGB565=y
+CONFIG_LV_OS_NONE=y
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_STRING=y
+CONFIG_LV_DEF_REFR_PERIOD=33
+CONFIG_LV_DRAW_SW_SUPPORT_RGB565A8=y
+CONFIG_LV_DRAW_SW_SUPPORT_A8=y
+CONFIG_LV_DRAW_SW_COMPLEX=y
+CONFIG_LV_USE_ANIMIMG=y
+CONFIG_LV_FONT_MONTSERRAT_14=y
+# Image caches off: the Image screen reuses two lv_image_dsc_t slots and both
+# caches are keyed by that address (ui_lv_requirements.h #errors otherwise).
+# 0 is LVGL's Kconfig default; pinned so host-tests can check it.
+CONFIG_LV_CACHE_DEF_SIZE=0
+CONFIG_LV_IMAGE_HEADER_CACHE_DEF_CNT=0
+# CONFIG_LV_BUILD_EXAMPLES is not set
+# CONFIG_LV_BUILD_DEMOS is not set
+
+# Gadget options (main/Kconfig.projbuild). The test signing key never ships
+# in a board build (A37); NVS encryption is opt-in (sdkconfig.nvs-encrypt).
+# CONFIG_GADGET_TEST_KEYS is not set
+# CONFIG_GADGET_NVS_ENCRYPT is not set

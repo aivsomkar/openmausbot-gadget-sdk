@@ -37,3 +37,4 @@ function(port_test name)
 endfunction()
 
 port_test(test_partitions ${ESP_DIR}/partitions/16mb.csv)
+port_test(test_board_defaults ${ESP_DIR})
