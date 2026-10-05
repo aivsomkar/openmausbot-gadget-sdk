@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenMausBot Gadget installer</title>
+    <meta name="description" content="Flash an ESP32-S3 board with OpenMausBot Gadget firmware, connect it to Wi-Fi and pair it with MausBot." />
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Install OpenMausBot Gadget</h1>
+        <p class="lede">Flash your board, connect it to Wi-Fi and pair it with MausBot, all from this page.</p>
+        <p id="release" class="muted"></p>
+        <p id="unsupported" class="alert" hidden></p>
+      </header>
+
+      <section id="step-board" class="step">
+        <h2>1. Pick your board</h2>
+        <div id="boards" class="boards" role="radiogroup" aria-label="Board"></div>
+        <p id="devkit-hint" class="hint" hidden></p>
+      </section>
+
+      <section id="step-install" class="step">
+        <h2>2. Install</h2>
+        <label class="check"><input type="checkbox" id="erase-all" /> <span id="erase-label"></span></label>
+        <p id="erase-help" class="hint"></p>
+        <div class="row">
+          <button id="install" type="button" disabled>Connect and install</button>
+          <button id="installed" type="button" class="link" disabled></button>
+        </div>
+        <p id="port-hint" class="hint"></p>
+        <progress id="flash-progress" max="1" value="0" hidden></progress>
+        <p id="install-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="step-wifi" class="step" hidden>
+        <h2>3. Connect to Wi-Fi</h2>
+        <ul id="networks" class="networks"></ul>
+        <form id="wifi-form">
+          <label>Network <input id="ssid" autocomplete="off" required /></label>
+          <label>Password <input id="password" type="password" autocomplete="off" /></label>
+          <p class="hint">Leave the password empty for an open network.</p>
+          <button type="submit">Next</button>
+          <p id="wifi-error" class="alert" hidden></p>
+        </form>
+      </section>
+
+      <section id="step-pair" class="step" hidden>
+        <h2>4. Pair with MausBot</h2>
+        <p id="code-how"></p>
+        <p id="remote-on" class="hint"></p>
+        <p id="windows-public" class="hint"></p>
+        <form id="code-form">
+          <label>Code <input id="code" inputmode="numeric" autocomplete="one-time-code" required /></label>
+          <button id="code-submit" type="submit">Pair</button>
+        </form>
+        <form id="host-form" hidden>
+          <p id="host-help"></p>
+          <ul id="hosts" class="networks"></ul>
+          <label>Address <input id="host-address" placeholder="192.168.1.20:8810" /></label>
+          <button id="host-submit" type="submit">Use this address</button>
+        </form>
+        <p id="pair-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="step-done" class="step" hidden>
+        <h2>Done</h2>
+        <p id="done-text"></p>
+        <button id="setup-again" type="button" class="link">Change Wi-Fi or pair again</button>
+      </section>
+
+      <details class="log">
+        <summary>Console log</summary>
+        <pre id="log"></pre>
+      </details>
+
+      <footer>
+        <p>
+          Open source under the Apache License 2.0:
+          <a href="https://github.com/aivsomkar/openmausbot-gadget-sdk">source</a>,
+          <a href="licenses.txt">third-party licenses</a>.
+        </p>
+        <p>The OpenMausBot name, the MausBot name and the Maus mascot are trademarks of Supamaus Software Private Limited.</p>
+      </footer>
+    </main>
+  </body>
+</html>
