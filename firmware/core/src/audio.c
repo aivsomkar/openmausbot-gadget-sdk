@@ -27,6 +27,7 @@ static struct {
   size_t cap, head, count;         /* samples */
   bool ended;                      /* speak.end arrived */
   bool playing;                    /* prebuffer reached: feeding the HAL */
+  size_t carry;                    /* chime samples at the head, ahead of a spoken post's speech */
   bool overflow_logged;
   uint64_t received, written;      /* samples */
   struct {
@@ -62,6 +63,16 @@ void audio_stop_local(void) {
 }
 
 static bool begin_stream(uint8_t stream, uint32_t rate, const char *turn) {
+  if (A.active && A.stream == 0 && stream != 0 && turn == NULL && rate == A.rate) {
+    /* A post's chime is still playing when its speech begins (spec §4.6): the
+     * speech queues behind the chime's unplayed samples instead of cutting them. */
+    A.stream = stream;
+    A.ended = A.overflow_logged = false;
+    A.carry = A.count;
+    A.playing = A.carry > 0;
+    A.received = A.written = 0;
+    return true;
+  }
   audio_stop_local();
   if (g_core.board->speaker_rate == 0 || hal_spk_open(rate) != GADGET_OK) {
     hal_log(GADGET_LOG_WARN, TAG, "no speaker at %u Hz", (unsigned)rate);
@@ -74,7 +85,7 @@ static bool begin_stream(uint8_t stream, uint32_t rate, const char *turn) {
   A.stream = stream;
   A.rate = rate;
   snprintf(A.turn, sizeof A.turn, "%s", turn ? turn : "");
-  A.head = A.count = 0;
+  A.head = A.count = A.carry = 0;
   A.ended = A.playing = A.overflow_logged = false;
   A.received = A.written = 0;
   g_core.model.reply.speak_elapsed_ms = 0;
@@ -137,6 +148,7 @@ static void feed(void) {
     size_t run = A.cap - A.head;
     if (run > A.count) run = A.count;
     if (run > block) run = block;
+    if (A.carry > 0 && run > A.carry) run = A.carry;
     uint32_t ahead = hal_spk_buffered_ms();
     size_t n = hal_spk_write(&A.ring[A.head], run);
     if (n == 0) break;
@@ -149,6 +161,13 @@ static void feed(void) {
     A.head = (A.head + n) % A.cap;
     A.count -= n;
     A.written += n;
+    if (A.carry > 0) {
+      A.carry -= n;
+      if (A.carry == 0 && !A.ended) {
+        A.playing = false; /* the chime is out: the speech pre-buffers like any other */
+        break;
+      }
+    }
     if (n < run) break;
   }
 }
@@ -184,6 +203,48 @@ void audio_tick(void) {
 }
 
 bool audio_active(void) { return A.active; }
+bool audio_speech_active(void) { return A.active && A.stream != 0; }
+
+/* ---- chime: 300 ms, two tones, integer-only ------------------------------------- */
+
+#define CHIME_MS 300u
+#define CHIME_AMP 6000
+#define CHIME_FADE_MS 5u
+
+/* round(32767 * sin(i * pi / 32)), i = 0..16: a quarter wave */
+static const int16_t QSIN[17] = {0,     3212,  6393,  9512,  12539, 15446, 18204, 20787, 23170,
+                                 25329, 27245, 28898, 30273, 31356, 32137, 32609, 32767};
+
+/* sin of a 16-bit phase (65536 = one turn), linear between table points */
+static int32_t sine(uint16_t phase) {
+  uint32_t quad = phase >> 14;
+  uint32_t p = phase & 0x3FFFu;
+  if (quad & 1u) p = 0x4000u - p;
+  uint32_t i = p >> 10, frac = p & 1023u;
+  int32_t v = i >= 16 ? QSIN[16] : QSIN[i] + ((QSIN[i + 1] - QSIN[i]) * (int32_t)frac) / 1024;
+  return (quad & 2u) ? -v : v;
+}
+
+bool audio_play_chime(void) {
+  uint32_t rate = g_core.board->speaker_rate;
+  if (rate == 0 || g_core.f.recording) return false;
+  if (A.active && A.stream != 0) return false; /* never over speech */
+  if (!begin_stream(0, rate, NULL)) return false; /* stream 0: host streams are 1..255 */
+  size_t n = (size_t)rate * CHIME_MS / 1000u, half = n / 2, fade = (size_t)rate * CHIME_FADE_MS / 1000u;
+  uint32_t phase = 0;
+  for (size_t k = 0; k < n; k++) {
+    bool first = k < half;
+    phase += (first ? 880u : 1320u) * 65536u / rate;
+    size_t pos = first ? k : k - half, len = first ? half : n - half;
+    int32_t env = CHIME_AMP;
+    if (pos < fade) env = env * (int32_t)pos / (int32_t)fade;
+    else if (len - pos < fade) env = env * (int32_t)(len - pos) / (int32_t)fade;
+    int16_t s = (int16_t)(sine((uint16_t)phase) * env / 32767);
+    push_samples(&s, 1);
+  }
+  A.ended = true;
+  return true;
+}
 
 void audio_init(void) { memset(&A, 0, sizeof A); }
 

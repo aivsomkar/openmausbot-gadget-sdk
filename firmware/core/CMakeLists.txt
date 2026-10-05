@@ -15,6 +15,7 @@ set(GADGET_CORE_SRCS
   src/interaction.c
   src/console_cmd.c
   src/audio.c
+  src/display.c
 )
 
 if(ESP_PLATFORM)

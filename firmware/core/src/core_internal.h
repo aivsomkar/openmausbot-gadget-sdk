@@ -124,6 +124,21 @@ void audio_on_binary(uint8_t stream, const uint8_t *payload, size_t len);   /* s
 void audio_tick(void);
 void audio_stop_local(void);                    /* stop playback now (tap, barge-in, cancel) */
 bool audio_active(void);                        /* something is playing or buffered */
+bool audio_speech_active(void);                 /* host speech (not the chime) is playing */
+/* A 300 ms two-tone chime; false without a speaker, while recording or over speech. */
+bool audio_play_chime(void);
+
+/* ---- display.c ------------------------------------------------------------------ */
+void display_init(void);
+void display_deinit(void);
+bool display_on_msg(const gp_msg_t *m);         /* ask, ask.close, post, card, card.close, image.* */
+void display_on_binary(uint8_t stream, const uint8_t *payload, size_t len);  /* image rows */
+void display_tick(void);
+void display_on_session_lost(void);
+/* Input while an ask is open; true when the ask consumed it. */
+bool display_ask_input(const gadget_input_t *in);
+bool display_dismiss(void);                     /* CANCEL / swipe down: image, then card, then toast */
+bool display_tap(void);                         /* a tap hides the toast */
 
 /* ---- console_cmd.c ------------------------------------------------------------- */
 void console_exec_line(const char *line);       /* NULL: an over-long line was dropped */

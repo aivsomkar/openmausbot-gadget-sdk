@@ -158,16 +158,15 @@ static void begin_press(press_t src, int16_t x, int16_t y) {
   I.y0 = y;
   I.moved = false;
   I.pre_n = 0;
-  I.press_stopped_audio = false;
-  if (audio_active()) {
-    /* barge-in: stop playback now; tell the host if the turn is still running */
-    audio_stop_local();
-    I.press_stopped_audio = true;
+  I.press_stopped_audio = audio_speech_active();
+  if (I.press_stopped_audio) {
+    /* barge-in: stop the speech now; tell the host if the turn is still running */
     if (I.in_flight && !I.stop_sent) {
       send_stop(I.turn);
       I.stop_sent = true;
     }
   }
+  audio_stop_local(); /* speech or a chime: never record over playback */
   if (hal_mic_start(GADGET_MIC_RATE) != GADGET_OK) hal_log(GADGET_LOG_ERROR, TAG, "mic did not start");
 }
 
@@ -183,15 +182,20 @@ static void cancel_action(void) {
     cancel_recording();
     return;
   }
-  if (audio_active() || I.in_flight) {
-    audio_stop_local();
+  bool speech = audio_speech_active();
+  audio_stop_local();
+  if (speech || I.in_flight) {
     if (I.in_flight && !I.stop_sent) {
       send_stop(I.turn);
       I.stop_sent = true;
     }
     return;
   }
-  if (I.reply_shown) clear_turn_model();
+  if (I.reply_shown) {
+    clear_turn_model();
+    return;
+  }
+  display_dismiss();
 }
 
 /* A touch shorter than the press minimum. */
@@ -199,7 +203,11 @@ static void tap(int16_t x, int16_t y) {
   (void)x;
   (void)y;
   if (I.press_stopped_audio) return; /* that tap stopped the speech: the reply stays */
-  if (I.reply_shown && !I.in_flight) clear_turn_model();
+  if (I.reply_shown && !I.in_flight) {
+    clear_turn_model();
+    return;
+  }
+  display_tap();
 }
 
 static int16_t swipe_threshold(void) { return (int16_t)(g_core.board->screen_h / 8); }
@@ -214,6 +222,10 @@ void interaction_deinit(void) {
 }
 
 void interaction_input(const gadget_input_t *in) {
+  if (display_ask_input(in)) {
+    publish();
+    return;
+  }
   bool ready = session_ready() && !g_core.f.ota_active;
   switch (in->type) {
     case GADGET_IN_TALK_DOWN:
