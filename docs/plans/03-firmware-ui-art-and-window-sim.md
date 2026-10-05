@@ -1779,8 +1779,11 @@ else()
   set_source_files_properties(${UI_SRCS} ${UI_ART_SRCS} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Wpedantic;-Werror")
   if(GADGET_SANITIZE)
     # PUBLIC: every test and gadget-sim linking gadget_ui runs sanitized too.
-    target_compile_options(gadget_ui PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
-    target_link_options(gadget_ui PUBLIC -fsanitize=address,undefined)
+    # -fno-sanitize-recover as in cmake/warnings.cmake: a UBSan finding aborts
+    # and fails its test instead of printing and passing.
+    target_compile_options(gadget_ui PUBLIC -fsanitize=address,undefined
+      -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(gadget_ui PUBLIC -fsanitize=address,undefined -fno-sanitize-recover=undefined)
   endif()
 endif()
 ```
@@ -4638,8 +4641,11 @@ else()
   set_source_files_properties(${UI_SRCS} ${UI_ART_SRCS} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Wpedantic;-Werror")
   if(GADGET_SANITIZE)
     # PUBLIC: every test and gadget-sim linking gadget_ui runs sanitized too.
-    target_compile_options(gadget_ui PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
-    target_link_options(gadget_ui PUBLIC -fsanitize=address,undefined)
+    # -fno-sanitize-recover as in cmake/warnings.cmake: a UBSan finding aborts
+    # and fails its test instead of printing and passing.
+    target_compile_options(gadget_ui PUBLIC -fsanitize=address,undefined
+      -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+    target_link_options(gadget_ui PUBLIC -fsanitize=address,undefined -fno-sanitize-recover=undefined)
   endif()
 endif()
 ```
@@ -6599,6 +6605,7 @@ Do not push. Report the branch, the commit list, and the hand-off notes below.
    - Follow-up: `ui_metrics_t` gains `gadget_rect_t toast_top`. On round boards it is `ui_rect_in_circle(w, 46, 140, 10)`, otherwise `{8, 8, w - 16, 60}`, the same size as `toast`. The toast sits there on Ask, Card, Update and Listening, and at the bottom on the other screens. On Ask, Card and Update the title, body and update line start under it (`text_top()` in `ui_screens.c`). The reviewer's alternative was to hide each label the toast cuts, as the caption is hidden; starting under it keeps the question being asked readable above Allow/Deny, and every board still has room for the title and some body. On Listening the toast covers the Maus, not the countdown digit. With the toast gone the text returns to the top of the safe area. `test_toast_never_cuts_text` now also covers Listening (countdown 3), Card (long body), Ask (2 and 3 options) and Update. A new test, `test_toast_never_hides_ask_options`, checks every board with 2 and 4 options: no drawn option, and on touch boards no hit rect, meets the toast.
    - Also in the follow-up, two layout fixes. (a) Setup and Offline pages turned on absolute time (`now_ms / UI_PAGE_ROTATE_MS`), so a new message could open on a middle page. On lcd-154 the scripted goldens `setup_bad_code`, `setup_device_limit` and `offline_unreachable` (and `setup_device_limit` on amoled-175c) opened mid-message. `ui_state_t` gains `caption_t0` and `caption_key`, and pages now count from the moment the screen or its caption changed (`ui_pager_show_rotating(p, age_ms)`). `test_setup` and `test_offline` check that a new message opens on its first line. (b) On devkit the listening ring reached x = −1. The landscape Maus now sits at `max(16, ring_d / 2 − mw / 2 + 2)`, 19 px for s150, and `test_listening` checks that the ring stays on the screen. The devkit goldens, the three lcd-154 goldens and amoled-175c's `setup_device_limit` were regenerated and looked at; two regenerations were byte-identical.
    - Counts: `ui.screens` had 20 tests as written, 22 after `736042e` and 23 after the follow-up. No pinned item changes: toast placement is P2b-local layout. Contract §2.7 says only "A post toast overlays any screen", and it still does.
+6. **UBSan aborts in UI and simulator code, found in Task 10 (commit `fix(P2b): UBSan findings in UI and simulator code abort their test`).** Task 3 gave `gadget_ui` `-fsanitize=address,undefined` `PUBLIC`ly but not P2a's `-fno-sanitize-recover=undefined` (`firmware/cmake/warnings.cmake`). `gadget_ui`, `gadget_sim_lvgl`, `test_ui_*`, `test_sim_*` and `test_ui_snapshots` do not call `gadget_warnings`, so under `GADGET_SANITIZE=ON` they used UBSan's recoverable handlers (`nm -u` on `libgadget_ui.a` listed only non-`_abort` `__ubsan_handle_*`): a finding printed `runtime error` and its test still passed. A probe with signed overflow, built with `test_ui_copy`'s flags, exited 0 before the fix and aborted (134) after it; both libraries now reference only `_abort` handlers. The two code blocks of Task 3 Step 5 and Task 5 show the new lines. The `build/asan` run (`-R '^(ui|sim)\.'`, 34 tests, and every label, 56 tests) passes with the fix, and `Testing/Temporary/LastTest.log` has no `runtime error`, `AddressSanitizer` or `LeakSanitizer` line, so nothing was hiding. No pinned item changes.
 
 Additions (allowed by contract §0 item 3, read by no other plan): CTest names `ui.<area>`, `sim.<area>`, `sim.audio_sdl.no_device`, `sim.audio_sdl.open_fails`, `sim.window_smoke`, `ui.snap.fixtures.<board>`, `ui.snap.<board>.update` and the `.fresh` fixtures (`fresh_dir.cmake` with its optional `DEV_KEY`); `ui_lv_requirements.h` also checks LVGL defaults the UI needs (`LV_DRAW_SW_COMPLEX`, label, image, arc, bar) and that both image caches are off; `UI_MODEL_COPY_ATTR` (render-cache placement hook for P2c); `firmware/ui/README.md`; the P2b-local `TALK`/`CANCEL` hints under the ask buttons on button boards; the host-name line on Setup and Offline (spec §5.5; it shows `host_name` itself and adds no English, so contract §2.15's copy table is unchanged).
 
