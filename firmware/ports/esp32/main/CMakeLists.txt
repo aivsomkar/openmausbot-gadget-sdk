@@ -52,7 +52,10 @@ idf_component_register(
            esp_driver_gpio esp_driver_i2c esp_driver_i2s esp_driver_spi esp_driver_ledc esp_driver_usb_serial_jtag
            esp_adc esp_lcd app_update spi_flash esp_app_format
            espressif__esp_websocket_client espressif__mdns espressif__esp_codec_dev
-           espressif__esp_lcd_co5300 waveshare__esp_lcd_touch_cst9217 espressif__esp_lcd_touch)
+           espressif__esp_lcd_co5300 waveshare__esp_lcd_touch_cst9217 espressif__esp_lcd_touch
+  # core calls the hal_* functions defined here; link every object of this
+  # component so those symbols resolve whatever the link order.
+  WHOLE_ARCHIVE)
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION AND NOT "${CONFIG_GADGET_BOARD_ID}" STREQUAL "${gadget_board}")
   message(FATAL_ERROR "sdkconfig says board '${CONFIG_GADGET_BOARD_ID}' but GADGET_BOARD is '${gadget_board}'. "
