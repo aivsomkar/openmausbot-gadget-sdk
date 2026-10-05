@@ -154,6 +154,7 @@ static void test_tap_stops_speech_and_the_turn(void) {
   int stops = fake_spk_stops();
   fake_input(GADGET_IN_TOUCH_DOWN, 233, 233);
   fake_run(50);
+  TEST_ASSERT_EQUAL_UINT8(0, core_ui_model()->speak_level); /* the mouth closes with the speech */
   fake_input(GADGET_IN_TOUCH_UP, 233, 233);
   fake_run(10);
   TEST_ASSERT_EQUAL_INT(stops + 1, fake_spk_stops());
@@ -218,9 +219,11 @@ static void test_speak_stop_and_replacement_streams(void) {
   start_turn();
   host("{\"op\":\"speak.begin\",\"stream\":1,\"rate\":16000,\"turn\":\"%s\"}", g_turn);
   speak(1, 10, 8000);
+  TEST_ASSERT_EQUAL_UINT8(3, core_ui_model()->speak_level);
   fake_ws_in("{\"op\":\"speak.stop\",\"stream\":1}");
   fake_run(10);
   TEST_ASSERT_NOT_EQUAL(UI_SCREEN_SPEAKING, core_ui_model()->screen);
+  TEST_ASSERT_EQUAL_UINT8(0, core_ui_model()->speak_level); /* at once, not a step per 60 ms */
   /* a new speak.begin replaces the playing stream; frames for the old one are dropped */
   host("{\"op\":\"speak.begin\",\"stream\":2,\"rate\":16000,\"turn\":\"%s\"}", g_turn);
   speak(2, 10, 8000);
@@ -230,6 +233,27 @@ static void test_speak_stop_and_replacement_streams(void) {
   fake_ws_in("{\"op\":\"speak.end\",\"stream\":3}");
   fake_run(1000);
   TEST_ASSERT_EQUAL_size_t(before, fake_spk_accepted());
+}
+
+/* A press shorter than 300 ms is a tap, not a recording: speech that begins
+ * while it is held waits (never into the live mic) and plays once it ends. */
+static void test_speech_that_begins_during_a_tap_still_plays(void) {
+  fake_ready("amoled-175c");
+  start_turn();
+  fake_input(GADGET_IN_TOUCH_DOWN, 233, 233);
+  fake_run(50);
+  host("{\"op\":\"speak.begin\",\"stream\":1,\"rate\":16000,\"turn\":\"%s\"}", g_turn);
+  for (int i = 0; i < 6; i++) speech_frame(1, 8000, 16000); /* 240 ms at once: past the pre-buffer */
+  fake_run(50);
+  TEST_ASSERT_EQUAL_size_t(0, fake_spk_accepted()); /* the mic is live */
+  TEST_ASSERT_NOT_EQUAL(UI_SCREEN_SPEAKING, core_ui_model()->screen);
+  fake_input(GADGET_IN_TOUCH_UP, 233, 233); /* 100 ms: a tap */
+  speak(1, 9, 8000);
+  fake_ws_in("{\"op\":\"speak.end\",\"stream\":1}");
+  fake_run(1000);
+  TEST_ASSERT_EQUAL_size_t(9600, fake_spk_accepted()); /* all 15 frames */
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("voice.begin"));
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("stop"));
 }
 
 static void test_speech_for_another_turn_is_ignored(void) {
@@ -285,9 +309,11 @@ static void test_a_drop_stops_playback(void) {
   host("{\"op\":\"speak.begin\",\"stream\":1,\"rate\":16000,\"turn\":\"%s\"}", g_turn);
   speak(1, 10, 8000);
   int stops = fake_spk_stops();
+  TEST_ASSERT_EQUAL_UINT8(3, core_ui_model()->speak_level);
   fake_ws_drop(1006);
   fake_run(10);
   TEST_ASSERT_EQUAL_INT(stops + 1, fake_spk_stops());
+  TEST_ASSERT_EQUAL_UINT8(0, core_ui_model()->speak_level); /* contract §2.7: 0 when no stream plays */
   fake_run(300);
   TEST_ASSERT_EQUAL_UINT8(0, core_ui_model()->speak_level); /* the mouth closes */
 }
@@ -303,6 +329,7 @@ int main(void) {
   RUN_TEST(test_barge_in_stops_the_old_turn_before_the_new_one);
   RUN_TEST(test_cancel_stops_speech);
   RUN_TEST(test_speak_stop_and_replacement_streams);
+  RUN_TEST(test_speech_that_begins_during_a_tap_still_plays);
   RUN_TEST(test_speech_for_another_turn_is_ignored);
   RUN_TEST(test_devkit_plays_24_khz);
   RUN_TEST(test_a_flood_beyond_the_buffer_is_dropped);

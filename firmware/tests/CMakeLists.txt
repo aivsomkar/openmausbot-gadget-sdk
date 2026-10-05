@@ -77,7 +77,9 @@ endif()
 
 # Simulator <-> fake host end-to-end scenarios (label e2e). They need Node
 # >= 22.18 on PATH and `npm ci` at the repo root (the fake host imports ws).
-if(GADGET_BUILD_SIM)
+# Without node the configure fails instead of dropping them silently;
+# -DGADGET_E2E=OFF leaves them out on purpose.
+if(GADGET_BUILD_SIM AND GADGET_E2E)
   find_program(GADGET_NODE node)
   if(GADGET_NODE)
     foreach(scenario enroll voice bargein bargein_after_done ask ota rollback)
@@ -91,6 +93,6 @@ if(GADGET_BUILD_SIM)
              COMMAND ${GADGET_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/e2e/upgrade.ts --sim $<TARGET_FILE:gadget-sim>)
     set_tests_properties(e2e.upgrade PROPERTIES LABELS e2e TIMEOUT 150)
   else()
-    message(STATUS "node not found: the e2e tests are not registered")
+    message(FATAL_ERROR "node >= 22.18 not found on PATH: install it or configure with -DGADGET_E2E=OFF")
   endif()
 endif()

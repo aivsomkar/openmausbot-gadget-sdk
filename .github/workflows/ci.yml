@@ -54,4 +54,4 @@ jobs:
       - name: Build
         run: cmake --build build/host -j4
       - name: Test
-        run: ctest --test-dir build/host --output-on-failure -L "unit|vectors|e2e"
+        run: ctest --test-dir build/host --output-on-failure --no-tests=error -L "unit|vectors|e2e"

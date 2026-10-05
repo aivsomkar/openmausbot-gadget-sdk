@@ -140,6 +140,56 @@ static void test_a_touch_lifted_before_300_ms_never_records_under_an_ask(void) {
   TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("answer"));
 }
 
+/* Contract §2.9: the touch-up that answers is the end of a touch that began
+ * on the ask. A press that ends while the finger stays down (a swipe down,
+ * the 60 s limit) leaves the rest of that touch to nobody: lifting it over an
+ * ask that arrived meanwhile never answers. A fresh tap still does. */
+static void test_a_touch_that_began_before_an_ask_never_answers_it(void) {
+  gadget_rect_t r[UI_ASK_OPTIONS_MAX];
+  ui_layout_ask(gadget_board_by_id("amoled-175c"), 2, r);
+  int16_t ax = (int16_t)(r[0].x + r[0].w / 2), ay = (int16_t)(r[0].y + r[0].h / 2); /* Allow */
+  /* a swipe down that began 50 ms before the ask, held past its 0.6 s lock */
+  fake_ready("amoled-175c");
+  fake_input(GADGET_IN_TOUCH_DOWN, ax, 100);
+  fake_run(50);
+  fake_ws_in(PERMISSION);
+  fake_input(GADGET_IN_TOUCH_MOVE, ax, ay); /* a swipe down: it ends the press */
+  fake_run(700);
+  fake_input(GADGET_IN_TOUCH_UP, ax, ay);
+  fake_run(10);
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_ASK, core_ui_model()->screen);
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("answer"));
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("voice.begin"));
+  fake_run(700);
+  tap_at(r[0]); /* a fresh tap answers */
+  cJSON *ans = fake_ws_last("answer");
+  TEST_ASSERT_NOT_NULL(ans);
+  TEST_ASSERT_EQUAL_STRING("allow", cJSON_GetObjectItem(ans, "option")->valuestring);
+  cJSON_Delete(ans);
+  /* a hold past the 60 s limit, with the host's pings keeping the session alive */
+  fake_reset();
+  fake_ready("amoled-175c");
+  fake_input(GADGET_IN_TOUCH_DOWN, ax, ay);
+  for (int s = 0; s < 61; s++) {
+    fake_mic_frames(50, 3000);
+    fake_ws_ping_in();
+  }
+  TEST_ASSERT_EQUAL_size_t(1, fake_ws_count("voice.end")); /* the limit ended the recording */
+  TEST_ASSERT_FALSE(fake_mic_running());
+  fake_ws_in(PERMISSION);
+  fake_run(700);
+  fake_input(GADGET_IN_TOUCH_UP, ax, ay);
+  fake_run(10);
+  TEST_ASSERT_EQUAL_INT(UI_SCREEN_ASK, core_ui_model()->screen);
+  TEST_ASSERT_EQUAL_size_t(0, fake_ws_count("answer"));
+  fake_run(700);
+  tap_at(r[0]);
+  ans = fake_ws_last("answer");
+  TEST_ASSERT_NOT_NULL(ans);
+  TEST_ASSERT_EQUAL_STRING("allow", cJSON_GetObjectItem(ans, "option")->valuestring);
+  cJSON_Delete(ans);
+}
+
 /* Spec §5.4: presses in the first 0.6 s after an ask appears are ignored. An
  * ask that waited behind Listening appears when the recording ends. */
 static void test_an_ask_shown_after_listening_ignores_presses_for_0_6_s(void) {
@@ -443,6 +493,7 @@ int main(void) {
   RUN_TEST(test_cancel_while_recording_drops_it_and_never_answers);
   RUN_TEST(test_an_ask_never_takes_a_held_touch_release);
   RUN_TEST(test_a_touch_lifted_before_300_ms_never_records_under_an_ask);
+  RUN_TEST(test_a_touch_that_began_before_an_ask_never_answers_it);
   RUN_TEST(test_an_ask_shown_after_listening_ignores_presses_for_0_6_s);
   RUN_TEST(test_unanswerable_asks);
   RUN_TEST(test_asks_queue_one_at_a_time);

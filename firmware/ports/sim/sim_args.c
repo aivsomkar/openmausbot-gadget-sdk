@@ -146,7 +146,7 @@ int sim_args_parse(int argc, char **argv, sim_args_t *a) {
     return 2;
   }
   if (a->zoom <= 0.0f) a->zoom = a->board->screen_w <= 320 ? 2.0f : 1.0f;
-  if (!a->seed_set) a->seed = a->headless ? 1u : 0u; /* 0: core seeds from the RNG */
+  if (!a->seed_set) a->seed = a->headless ? 1u : 0u; /* 0: main() draws one random seed for core and the UI */
   if (a->snapshot_dir == NULL) {
     static char snap[256];
     snprintf(snap, sizeof snap, "firmware/tests/snapshots/%s", a->board->id);

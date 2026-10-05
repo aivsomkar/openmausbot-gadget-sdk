@@ -119,7 +119,7 @@ bool audio_on_msg(const gp_msg_t *m) {
       const gp_speak_begin_t *b = &m->m.speak_begin;
       const char *turn = b->turn;
       if (turn != NULL && strcmp(turn, interaction_turn()) != 0) break; /* speech for an old turn */
-      if (g_core.f.mic_live) break;                                      /* never play into the mic */
+      if (g_core.f.recording) break; /* the recording replaced that turn; a held press may still be a tap */
       begin_stream(b->stream, b->rate, turn);
       break;
     }
@@ -147,6 +147,7 @@ void audio_on_binary(uint8_t stream, const uint8_t *payload, size_t len) {
 }
 
 static void feed(void) {
+  if (g_core.f.mic_live) return; /* never play into a live mic; start_recording() drops the stream */
   uint64_t now = g_core.now;
   if (!A.playing && (A.count * 1000u / A.rate >= PREBUFFER_MS || A.ended)) A.playing = true;
   if (!A.playing) return;
@@ -189,15 +190,16 @@ void audio_tick(void) {
     if (reply_speech()) m->reply.speak_elapsed_ms = written_ms > buffered ? written_ms - buffered : 0;
     if (A.ended && A.count == 0 && buffered == 0) release(); /* played out */
   }
+  if (!A.active) { /* contract §2.7: 0 when no stream plays (stopped, dropped or played out) */
+    A.lv_n = 0;
+    A.level = 0;
+  }
   uint8_t target = A.active ? A.level : 0;
-  bool popped = false;
   while (A.lv_n > 0 && A.lv[A.lv_head].at <= now) {
     target = A.lv[A.lv_head].level;
-    popped = true;
     A.lv_head = (A.lv_head + 1) % LEVEL_QUEUE;
     A.lv_n--;
   }
-  if (!popped && A.lv_n == 0 && !A.active) target = 0;
   if (target > A.level) {
     A.level = target;
     A.level_changed = now;
@@ -206,7 +208,7 @@ void audio_tick(void) {
     A.level_changed = now;
   }
   m->speak_level = A.level;
-  g_core.f.speaking = A.active && reply_speech();
+  g_core.f.speaking = A.active && reply_speech() && !g_core.f.mic_live;
 }
 
 bool audio_active(void) { return A.active; }

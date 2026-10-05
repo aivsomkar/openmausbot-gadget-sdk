@@ -18,6 +18,7 @@ static struct {
   int16_t x0, y0;
   bool moved;          /* the touch moved past the swipe threshold */
   bool press_stopped_audio; /* this press already stopped playback (barge-in or tap) */
+  bool touch_held;     /* a finger is down that the ask did not take */
   bool rec;            /* voice.begin sent, frames streaming */
   char rec_turn[GADGET_TURN_MAX + 1];
   uint8_t rec_stream;
@@ -225,8 +226,14 @@ void interaction_deinit(void) {
 
 void interaction_input(const gadget_input_t *in) {
   /* A held press or a live recording keeps its input until it ends: Listening
-   * outranks Ask, and the ask only takes presses that began on it. */
-  if (I.press == PRESS_NONE && !I.rec && display_ask_input(in)) {
+   * outranks Ask, and the ask only takes presses that began on it. A press
+   * can end while its finger stays down (a swipe down, the 60 s limit, a done
+   * or a say while recording, a lost session): the rest of that touch is
+   * still not the ask's. */
+  if (in->type == GADGET_IN_TOUCH_DOWN) I.touch_held = false;
+  bool rest_of_touch = I.touch_held && (in->type == GADGET_IN_TOUCH_MOVE || in->type == GADGET_IN_TOUCH_UP);
+  if (in->type == GADGET_IN_TOUCH_UP) I.touch_held = false;
+  if (I.press == PRESS_NONE && !I.rec && !rest_of_touch && display_ask_input(in)) {
     publish();
     return;
   }
@@ -243,6 +250,7 @@ void interaction_input(const gadget_input_t *in) {
       release_press(PRESS_TALK);
       break;
     case GADGET_IN_TOUCH_DOWN:
+      I.touch_held = true;
       if (!session_ready()) {
         session_wake(); /* hold anywhere is TALK on touch boards (spec §5.4) */
         break;

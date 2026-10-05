@@ -56,6 +56,14 @@ int main(int argc, char **argv) {
     fprintf(stderr, "gadget-sim: psa_crypto_init failed\n");
     return 3;
   }
+  if (g_sim.seed == 0) { /* contract §2.16: random without --headless; core and the UI get the same seed */
+    do {
+      if (psa_generate_random((uint8_t *)&g_sim.seed, sizeof g_sim.seed) != PSA_SUCCESS) {
+        fprintf(stderr, "gadget-sim: no random seed\n");
+        return 3;
+      }
+    } while (g_sim.seed == 0);
+  }
   const sim_audio_backend_t *audio = pick_audio();
   if (audio == NULL) return 3;
   sim_audio_use(audio);
