@@ -20,8 +20,10 @@ Boards: `amoled-175c` (Waveshare ESP32-S3-Touch-AMOLED-1.75C), `amoled-175`
   `. ~/.espressif/tools/activate_idf_v6.0.3.sh`. To install it on a Mac,
   install EIM's prerequisites first (EIM checks them but does not install
   them): `brew install libgcrypt glib pixman sdl2 libslirp dfu-util ninja && brew tap espressif/eim && brew install eim && eim install -i v6.0.3 -t esp32s3`.
-  Without EIM: `git clone -b v6.0.3 --depth 1 --recursive --shallow-submodules https://github.com/espressif/esp-idf.git ~/esp/esp-idf-v6.0.3 && ~/esp/esp-idf-v6.0.3/install.sh esp32s3`,
-  then activate with `. ~/esp/esp-idf-v6.0.3/export.sh` instead.
+  Without EIM, follow the manual installation in Espressif's ESP-IDF Get
+  Started guide: clone the v6.0.3 tag into `~/esp/esp-idf-v6.0.3`, run
+  `~/esp/esp-idf-v6.0.3/install.sh esp32s3`, then activate with
+  `. ~/esp/esp-idf-v6.0.3/export.sh` instead.
 - Either MausBot with **Remote access** on (Settings → Remote access), or the
   fake host from this repository on the same Wi-Fi (run `npm ci` at the
   repository root once):
