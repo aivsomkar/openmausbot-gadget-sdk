@@ -24,7 +24,9 @@
 #define MAX_OPS 8192
 #define DEFAULT_TIMEOUT_MS 5000u
 #define BOOT_TIMEOUT_MS 10000u
-#define LINE_BYTES (GADGET_CONSOLE_LINE_MAX + 64u) /* "console " + the longest console line */
+/* "net_text " + 16 KiB of JSON, and "net_binary " + 8 KiB as hex, are the
+ * longest lines (a console line is at most 8 KiB). */
+#define LINE_BYTES (GADGET_TEXT_FRAME_MAX + 64u)
 
 static struct {
   const char *path;
@@ -63,9 +65,17 @@ int sim_script_load(const char *path, unsigned boot) {
     fprintf(stderr, "gadget-sim: cannot open script %s\n", path);
     return -1;
   }
-  char buf[LINE_BYTES];
+  static char buf[LINE_BYTES];
   while (S.n < MAX_LINES && fgets(buf, sizeof buf, f) != NULL) {
     size_t len = strlen(buf);
+    if (len == sizeof buf - 1 && buf[len - 1] != '\n') {
+      int c = getc(f); /* the buffer is full: only a newline or the end may follow */
+      if (c != EOF && c != '\n') {
+        fprintf(stderr, "gadget-sim: %s:%d: longer than %u bytes\n", path, S.n + 1, (unsigned)(LINE_BYTES - 1u));
+        fclose(f);
+        return -1;
+      }
+    }
     while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) buf[--len] = '\0';
     S.lines[S.n++] = strdup(buf);
   }
@@ -204,7 +214,7 @@ int sim_script_step(uint64_t now) {
   }
   if (S.pc >= S.n) return 1;
 
-  char line[LINE_BYTES];
+  static char line[LINE_BYTES];
   snprintf(line, sizeof line, "%s", S.lines[S.pc]);
   char *save = NULL;
   char *cmd = strtok_r(line, " \t", &save);

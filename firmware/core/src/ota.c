@@ -82,8 +82,9 @@ static const char *check_offer(const gp_fw_offer_t *o) {
 }
 
 static void on_offer(const gp_fw_offer_t *o) {
-  /* never cut off a person who is talking or waiting for an answer */
-  if (O.st != GADGET_OTA_IDLE || g_core.f.recording || interaction_turn_in_flight()) {
+  /* never cut off a person who is talking or waiting for an answer; a held
+   * press counts as talking (the mic is live before it becomes a recording) */
+  if (O.st != GADGET_OTA_IDLE || g_core.f.mic_live || interaction_turn_in_flight()) {
     send_fail(o->stream, GADGET_FW_BUSY);
     return;
   }
@@ -197,7 +198,11 @@ void ota_on_ready(void) {
     hal_log(GADGET_LOG_WARN, TAG, "test: ignoring the first ready, so probation runs out");
     return;
   }
-  hal_ota_mark_valid();
+  if (hal_ota_mark_valid() != GADGET_OK) {
+    /* not confirmed: probation stays armed and rolls back unless a later ready confirms */
+    hal_log(GADGET_LOG_ERROR, TAG, "could not confirm %s", g_core.fw);
+    return;
+  }
   O.validated = true;
   hal_log(GADGET_LOG_INFO, TAG, "%s is good", g_core.fw);
   gp_fw_installed_t fi = {.version = g_core.fw};

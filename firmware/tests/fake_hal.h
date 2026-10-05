@@ -119,6 +119,7 @@ int fake_ota_aborts(void);
 bool fake_ota_marked_valid(void);
 bool fake_ota_invalidated(void);                /* hal_ota_mark_invalid_and_reboot ran */
 void fake_ota_fail_writes(bool on);             /* queued writes report GADGET_EV_OTA_ERROR */
+void fake_ota_mark_valid_fails(bool on);        /* hal_ota_mark_valid returns GADGET_ERR_IO */
 
 /* ---- battery, log ------------------------------------------------------------ */
 void fake_battery_set(bool present, uint8_t pct, bool charging);

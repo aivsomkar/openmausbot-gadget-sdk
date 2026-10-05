@@ -70,7 +70,7 @@ static struct {
   hal_ota_img_state_t ota_running;
   uint8_t *ota_image;
   uint32_t ota_size, ota_written, ota_durable;
-  bool ota_finalized, ota_valid, ota_invalidated, ota_fail_writes;
+  bool ota_finalized, ota_valid, ota_invalidated, ota_fail_writes, ota_mark_valid_fails;
   char ota_boot_version[GADGET_VERSION_MAX + 1];
   int ota_aborts;
   /* battery */
@@ -644,6 +644,7 @@ void hal_ota_abort(void) {
 hal_ota_img_state_t hal_ota_running_state(void) { return F.ota_running; }
 
 gadget_status_t hal_ota_mark_valid(void) {
+  if (F.ota_mark_valid_fails) return GADGET_ERR_IO;
   F.ota_valid = true;
   F.ota_running = HAL_OTA_IMG_VALID;
   return GADGET_OK;
@@ -659,6 +660,7 @@ int fake_ota_aborts(void) { return F.ota_aborts; }
 bool fake_ota_marked_valid(void) { return F.ota_valid; }
 bool fake_ota_invalidated(void) { return F.ota_invalidated; }
 void fake_ota_fail_writes(bool on) { F.ota_fail_writes = on; }
+void fake_ota_mark_valid_fails(bool on) { F.ota_mark_valid_fails = on; }
 
 /* ---- battery, system ------------------------------------------------------------------------ */
 

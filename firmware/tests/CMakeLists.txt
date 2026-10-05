@@ -57,10 +57,22 @@ if(GADGET_BUILD_SIM)
   gadget_sim_script(handshake amoled-175c ARGS "--pair 123456" EXPECT "\"pair\":\"paired\"")
   gadget_sim_script(voice lcd-154 ARGS "--pair 123456")
   gadget_sim_script(ask amoled-175c ARGS "--pair 123456")
-  gadget_sim_script(ota amoled-175c ARGS "--pair 123456" EXPECT "\"fw\":\"1\\.1\\.0\"")
+  # The fw checks read the script's final `@omb status` line: every boot line
+  # carries a fw too. In a status line fw comes before the battery object, so
+  # [^{]* stays within that line.
+  gadget_sim_script(ota amoled-175c ARGS "--pair 123456" EXPECT "\"op\":\"status\"[^{]*\"fw\":\"1\\.1\\.0\"")
   gadget_sim_script(rollback amoled-175c ARGS "--pair 123456 --fail-probation --probation-ms 2000"
-                    EXPECT "\"fw\":\"0\\.0\\.0-dev\"")
-  gadget_sim_script(reboot_rollback amoled-175c ARGS "--pair 123456" EXPECT "\"fw\":\"0\\.0\\.0-dev\"")
+                    EXPECT "\"op\":\"status\"[^{]*\"fw\":\"0\\.0\\.0-dev\"")
+  gadget_sim_script(reboot_rollback amoled-175c ARGS "--pair 123456"
+                    EXPECT "\"op\":\"status\"[^{]*\"fw\":\"0\\.0\\.0-dev\"")
+
+  # A script that cannot be read stops the simulator before it writes any state.
+  add_test(NAME sim.missing_script
+           COMMAND ${CMAKE_COMMAND} -DSIM=$<TARGET_FILE:gadget-sim> -DBOARD=lcd-154
+                   -DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/scripts/no_such_script.txt
+                   -DSTATE=${CMAKE_CURRENT_BINARY_DIR}/sim-state/missing_script -DRC=1 -DNO_STATE=ON
+                   -P ${CMAKE_CURRENT_SOURCE_DIR}/run_sim_script.cmake)
+  set_tests_properties(sim.missing_script PROPERTIES LABELS unit TIMEOUT 30)
 endif()
 
 # Simulator <-> fake host end-to-end scenarios (label e2e). They need Node
@@ -74,6 +86,10 @@ if(GADGET_BUILD_SIM)
                        ${CMAKE_CURRENT_SOURCE_DIR}/e2e/${scenario}.txt)
       set_tests_properties(e2e.${scenario} PROPERTIES LABELS e2e TIMEOUT 150)
     endforeach()
+    # The simulator's upgrade checks against a raw TCP host (RFC 6455 §4.1).
+    add_test(NAME e2e.upgrade
+             COMMAND ${GADGET_NODE} ${CMAKE_CURRENT_SOURCE_DIR}/e2e/upgrade.ts --sim $<TARGET_FILE:gadget-sim>)
+    set_tests_properties(e2e.upgrade PROPERTIES LABELS e2e TIMEOUT 150)
   else()
     message(STATUS "node not found: the e2e tests are not registered")
   endif()

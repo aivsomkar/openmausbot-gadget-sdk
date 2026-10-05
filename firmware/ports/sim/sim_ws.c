@@ -90,9 +90,9 @@ static ssize_t on_recv(wslay_event_context_ptr ctx, uint8_t *buf, size_t len, in
   return r;
 }
 
-static ssize_t on_send(wslay_event_context_ptr ctx, const uint8_t *data, size_t len, int flags, void *ud) {
-  (void)flags;
-  (void)ud;
+/* send() that never raises SIGPIPE: MSG_NOSIGNAL on Linux, SO_NOSIGPIPE
+ * (set in hal_ws_open) on macOS. Every send on the socket goes through here. */
+static ssize_t send_nosig(const void *data, size_t len) {
   ssize_t r;
 #if defined(MSG_NOSIGNAL)
   while ((r = send(W.fd, data, len, MSG_NOSIGNAL)) < 0 && errno == EINTR) {
@@ -101,6 +101,13 @@ static ssize_t on_send(wslay_event_context_ptr ctx, const uint8_t *data, size_t 
   while ((r = send(W.fd, data, len, 0)) < 0 && errno == EINTR) {
   }
 #endif
+  return r;
+}
+
+static ssize_t on_send(wslay_event_context_ptr ctx, const uint8_t *data, size_t len, int flags, void *ud) {
+  (void)flags;
+  (void)ud;
+  ssize_t r = send_nosig(data, len);
   if (r < 0) {
     wslay_event_set_error(ctx, (errno == EAGAIN || errno == EWOULDBLOCK) ? WSLAY_ERR_WOULDBLOCK
                                                                          : WSLAY_ERR_CALLBACK_FAILURE);
@@ -160,6 +167,26 @@ static bool header_is(const char *name, const char *want) {
          (v[strlen(want)] == '\r' || v[strlen(want)] == ' ');
 }
 
+/* True when the header's comma-separated value lists token, in any case. */
+static bool header_has_token(const char *name, const char *token) {
+  const char *v = header(name);
+  if (v == NULL) return false;
+  size_t n = strlen(token);
+  const char *end = v + strcspn(v, "\r\n");
+  for (const char *p = v; p < end;) {
+    while (p < end && (*p == ' ' || *p == '\t' || *p == ',')) p++;
+    const char *q = p;
+    while (q < end && *q != ',') q++;
+    const char *e = q;
+    while (e > p && (e[-1] == ' ' || e[-1] == '\t')) e--;
+    if ((size_t)(e - p) == n && strncasecmp(p, token, n) == 0) return true;
+    p = q;
+  }
+  return false;
+}
+
+/* RFC 6455 §4.1: the client fails the connection unless every check holds.
+ * No extension was asked for (spec §4.1), so the response may name none. */
 static bool response_ok(void) {
   if (strncmp(W.resp, "HTTP/1.1 101", 12) != 0) return false;
   char text[96];
@@ -171,8 +198,9 @@ static bool response_ok(void) {
   }
   char accept[32];
   gadget_b64_encode(accept, sizeof accept, sha1, sizeof sha1);
-  return header_is("Upgrade", "websocket") && header_is("Sec-WebSocket-Accept", accept) &&
-         header_is("Sec-WebSocket-Protocol", GADGET_SUBPROTOCOL);
+  return header_is("Upgrade", "websocket") && header_has_token("Connection", "upgrade") &&
+         header_is("Sec-WebSocket-Accept", accept) && header_is("Sec-WebSocket-Protocol", GADGET_SUBPROTOCOL) &&
+         header("Sec-WebSocket-Extensions") == NULL;
 }
 
 static void start_ws(void) {
@@ -189,8 +217,8 @@ static void start_ws(void) {
 
 static void handshake_io(short revents) {
   if ((revents & POLLOUT) && W.req_sent < W.req_len) {
-    ssize_t r = send(W.fd, W.req + W.req_sent, W.req_len - W.req_sent, 0);
-    if (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+    ssize_t r = send_nosig(W.req + W.req_sent, W.req_len - W.req_sent);
+    if (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
       finish(0);
       return;
     }

@@ -48,6 +48,8 @@ int main(int argc, char **argv) {
   int rc = sim_args_parse(argc, argv, &g_sim);
   if (rc == 1) return 0;
   if (rc != 0) return 2;
+  /* read the script first: a script that cannot be read writes no state */
+  if (g_sim.script != NULL && sim_script_load(g_sim.script, g_sim.boot) != 0) return 1;
   char fw[GADGET_VERSION_MAX + 1];
   if (sim_storage_open(g_sim.state_dir) != 0 || sim_ota_open(g_sim.state_dir, fw, sizeof fw) != 0) return 3;
   if (psa_crypto_init() != PSA_SUCCESS) {
@@ -80,7 +82,6 @@ int main(int argc, char **argv) {
     feed_console(line);
   }
   if (ui_init(g_sim.board, g_sim.seed) != GADGET_OK) return 3;
-  if (g_sim.script != NULL && sim_script_load(g_sim.script, g_sim.boot) != 0) return 1;
   if (!g_sim.headless) fprintf(stderr, "gadget-sim: %s on the real clock; type console commands here\n", g_sim.board->id);
 
   bool paced = !g_sim.headless || (g_sim.host != NULL && !sim_net_scripted());

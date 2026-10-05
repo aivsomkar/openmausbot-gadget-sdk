@@ -297,7 +297,8 @@ void interaction_mic(const gadget_mic_frame_t *f) {
 void interaction_tick(void) {
   uint64_t now = g_core.now;
   if (I.press != PRESS_NONE && !I.rec && !I.moved && now - I.press_at >= GADGET_PRESS_MIN_MS) {
-    start_recording();
+    if (g_core.f.ota_active) end_press(); /* never record during an update (ota.c refuses offers under a press) */
+    else start_recording();
   }
   if (I.rec) {
     uint64_t elapsed = now - I.press_at;
