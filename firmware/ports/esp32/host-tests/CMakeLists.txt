@@ -23,6 +23,8 @@ set(PORT_LOGIC_SRCS
   ${CORE_DIR}/src/boards.c
   ${ESP_DIR}/main/logic/pl_event.c
   ${ESP_DIR}/main/logic/pl_util.c
+  ${ESP_DIR}/main/logic/pl_scan.c
+  ${ESP_DIR}/main/logic/pl_wifi.c
 )
 
 add_library(port_logic STATIC ${PORT_LOGIC_SRCS})
@@ -42,3 +44,5 @@ port_test(test_partitions ${ESP_DIR}/partitions/16mb.csv)
 port_test(test_board_defaults ${ESP_DIR})
 port_test(test_pl_event)
 port_test(test_pl_util)
+port_test(test_pl_scan)
+port_test(test_pl_wifi)
